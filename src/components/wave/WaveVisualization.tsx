@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useWaveAnimation } from "@/hooks/useWaveAnimation";
 import { useWaveParams } from "@/hooks/useWaveParams";
 import { useWaveSources } from "@/hooks/useWaveSources";
+import { useCrossSection } from "@/hooks/useCrossSection";
 import { ControlBar } from "./ControlBar";
 import { ParameterPanel } from "./ParameterPanel";
 import { SourcePanel } from "./SourcePanel";
+import { CrossSectionPanel } from "./CrossSectionPanel";
+import { FIELD_HALF_SIZE } from "@/lib/wave-math";
+import type { CrossSectionPlane3DConfig } from "@/hooks/useWaveAnimation";
 
 export function WaveVisualization() {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -18,6 +22,11 @@ export function WaveVisualization() {
   const [isSourcePanelOpen, setIsSourcePanelOpen] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 1280 : true
   );
+
+  // Schnittebenen-Zustand (lebt hier, wird an beide Hooks weitergegeben)
+  const [csIsActive, setCsIsActive] = useState(false);
+  const [csOrientation, setCsOrientation] = useState<"x" | "y">("x");
+  const [csPosition, setCsPosition] = useState(0);
 
   const waveSourcesHook = useWaveSources();
   const waveParamsHook = useWaveParams(waveSourcesHook.config.count);
@@ -33,12 +42,41 @@ export function WaveVisualization() {
     setFps(newFps);
   }, []);
 
-  const { containerRef, resetCamera, resetTime, webglSupported } = useWaveAnimation({
-    isPlaying,
-    onFpsUpdate: handleFpsUpdate,
+  const crossSectionConfig = useMemo<CrossSectionPlane3DConfig>(
+    () => ({
+      isActive: csIsActive,
+      orientation: csOrientation,
+      position: csPosition,
+    }),
+    [csIsActive, csOrientation, csPosition]
+  );
+
+  const { containerRef, resetCamera, resetTime, webglSupported, timeRef } =
+    useWaveAnimation({
+      isPlaying,
+      onFpsUpdate: handleFpsUpdate,
+      waveUniformArrays: waveParamsHook.uniformArrays,
+      sourceUniforms: waveSourcesHook.sourceUniforms,
+      crossSectionConfig,
+    });
+
+  const { chartData } = useCrossSection({
+    timeRef,
     waveUniformArrays: waveParamsHook.uniformArrays,
     sourceUniforms: waveSourcesHook.sourceUniforms,
+    isPlaying,
+    isActive: csIsActive,
+    orientation: csOrientation,
+    position: csPosition,
   });
+
+  const toggleCrossSection = useCallback(() => {
+    setCsIsActive((prev) => !prev);
+  }, []);
+
+  const handleSetCsPosition = useCallback((p: number) => {
+    setCsPosition(Math.max(-FIELD_HALF_SIZE, Math.min(FIELD_HALF_SIZE, p)));
+  }, []);
 
   if (!webglSupported) {
     return (
@@ -78,7 +116,28 @@ export function WaveVisualization() {
           isOpen={isSourcePanelOpen}
           onOpenChange={setIsSourcePanelOpen}
         />
-        <div ref={containerRef} className="flex-1 min-h-0" />
+        {/* Mittlerer Bereich: 3D-Canvas + optionales Schnittdiagramm */}
+        <div className="flex flex-col flex-1 min-h-0">
+          <div
+            ref={containerRef}
+            className={csIsActive ? "flex-[2] min-h-0" : "flex-1 min-h-0"}
+          />
+          {csIsActive && (
+            <div className="flex-[1] min-h-0" style={{ minHeight: "180px" }}>
+              <CrossSectionPanel
+                isActive={csIsActive}
+                orientation={csOrientation}
+                onOrientationChange={setCsOrientation}
+                position={csPosition}
+                onPositionChange={handleSetCsPosition}
+                positionMin={-FIELD_HALF_SIZE}
+                positionMax={FIELD_HALF_SIZE}
+                chartData={chartData}
+                sourceUniforms={waveSourcesHook.sourceUniforms}
+              />
+            </div>
+          )}
+        </div>
         <ParameterPanel
           waveParamsHook={waveParamsHook}
           sourceCount={waveSourcesHook.config.count}
@@ -89,9 +148,14 @@ export function WaveVisualization() {
       <ControlBar
         isPlaying={isPlaying}
         onTogglePlay={() => setIsPlaying((prev) => !prev)}
-        onRestartWave={resetTime}
+        onRestartWave={() => {
+          resetTime();
+          setIsPlaying(false);
+        }}
         onResetCamera={resetCamera}
         fps={fps}
+        isCrossSectionActive={csIsActive}
+        onToggleCrossSection={toggleCrossSection}
       />
     </div>
   );

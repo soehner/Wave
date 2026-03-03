@@ -24,11 +24,19 @@ const PLANE_SIZE = 10;
 const DEFAULT_CAMERA_POSITION = new THREE.Vector3(8, 8, 6);
 const DEFAULT_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
 
+/** Parameter fuer die 3D-Schnittebene */
+export interface CrossSectionPlane3DConfig {
+  isActive: boolean;
+  orientation: "x" | "y";
+  position: number;
+}
+
 interface UseWaveAnimationOptions {
   isPlaying: boolean;
   onFpsUpdate?: (fps: number) => void;
   waveUniformArrays?: WaveUniformArrays;
   sourceUniforms?: SourceUniforms;
+  crossSectionConfig?: CrossSectionPlane3DConfig;
 }
 
 export function useWaveAnimation({
@@ -36,6 +44,7 @@ export function useWaveAnimation({
   onFpsUpdate,
   waveUniformArrays,
   sourceUniforms,
+  crossSectionConfig,
 }: UseWaveAnimationOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -44,6 +53,7 @@ export function useWaveAnimation({
   const uniformsRef = useRef<Record<string, THREE.IUniform> | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const markerGroupRef = useRef<THREE.Group | null>(null);
+  const crossSectionGroupRef = useRef<THREE.Group | null>(null);
   const animFrameRef = useRef<number>(0);
   const timeRef = useRef<number>(0);
   const prevTimestampRef = useRef<number>(0);
@@ -167,6 +177,75 @@ export function useWaveAnimation({
     }
   }, [sType, sCount, sPositions]);
 
+  // 3D-Schnittebene verwalten
+  const csActive = crossSectionConfig?.isActive ?? false;
+  const csOrientation = crossSectionConfig?.orientation ?? "x";
+  const csPosition = crossSectionConfig?.position ?? 0;
+
+  useEffect(() => {
+    const group = crossSectionGroupRef.current;
+    if (!group) return;
+
+    // Alte Objekte entfernen
+    while (group.children.length > 0) {
+      const child = group.children[0];
+      group.remove(child);
+      if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m) => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    }
+
+    if (!csActive) return;
+
+    // Halbtransparente Schnittebene
+    const planeGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE);
+    const planeMat = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      transparent: true,
+      opacity: 0.15,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const planeMesh = new THREE.Mesh(planeGeo, planeMat);
+
+    if (csOrientation === "x") {
+      // Ebene senkrecht zur X-Achse: steht in der YZ-Ebene bei x = csPosition
+      planeMesh.rotation.y = Math.PI / 2;
+      planeMesh.position.set(csPosition, 0, 0);
+    } else {
+      // Ebene senkrecht zur Y-Achse: steht in der XZ-Ebene bei y = csPosition
+      planeMesh.rotation.x = Math.PI / 2;
+      planeMesh.position.set(0, csPosition, 0);
+    }
+
+    group.add(planeMesh);
+
+    // Kontrastreiche Linie an der Schnittposition auf der z=0-Ebene
+    const halfSize = PLANE_SIZE / 2;
+    const linePoints = csOrientation === "x"
+      ? [
+          new THREE.Vector3(csPosition, -halfSize, 0),
+          new THREE.Vector3(csPosition, halfSize, 0),
+        ]
+      : [
+          new THREE.Vector3(-halfSize, csPosition, 0),
+          new THREE.Vector3(halfSize, csPosition, 0),
+        ];
+
+    const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0x00ffff,
+      linewidth: 2,
+    });
+    const line = new THREE.Line(lineGeo, lineMat);
+    group.add(line);
+  }, [csActive, csOrientation, csPosition]);
+
   const resetCamera = useCallback(() => {
     if (cameraRef.current && controlsRef.current) {
       cameraRef.current.position.copy(DEFAULT_CAMERA_POSITION);
@@ -205,6 +284,11 @@ export function useWaveAnimation({
     const markerGroup = new THREE.Group();
     scene.add(markerGroup);
     markerGroupRef.current = markerGroup;
+
+    // Schnittebenen-Gruppe
+    const crossSectionGroup = new THREE.Group();
+    scene.add(crossSectionGroup);
+    crossSectionGroupRef.current = crossSectionGroup;
 
     // Kamera
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
@@ -390,5 +474,7 @@ export function useWaveAnimation({
     resetCamera,
     resetTime,
     webglSupported: isWebGLSupported,
+    /** Geteilte Zeitreferenz fuer die CPU-seitige Schnittberechnung */
+    timeRef,
   };
 }

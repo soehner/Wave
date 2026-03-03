@@ -18,7 +18,7 @@ export const waveParamsSchema = z.object({
   amplitude: z.number().min(0).max(5),
   frequency: z.number().min(0).max(10),
   wavelength: z.number().min(0.1).max(20),
-  phase: z.number().min(-Math.PI).max(Math.PI),
+  phase: z.number().min(-180).max(180),
   damping: z.number().min(0).max(1),
 });
 
@@ -66,7 +66,7 @@ export function paramsToUniforms(params: WaveParams): WaveUniforms {
     amplitude: params.amplitude,
     waveNumber: derived.waveNumber,
     angularFreq: derived.angularFrequency,
-    phase: params.phase,
+    phase: params.phase * (Math.PI / 180),
     damping: params.damping,
   };
 }
@@ -91,7 +91,7 @@ export function paramsArrayToUniforms(sources: WaveParams[]): WaveUniformArrays 
     amplitudes: pad(sources.map((s) => s.amplitude)),
     waveNumbers: pad(sources.map((s) => (2 * Math.PI) / s.wavelength)),
     angularFreqs: pad(sources.map((s) => 2 * Math.PI * s.frequency)),
-    phases: pad(sources.map((s) => s.phase)),
+    phases: pad(sources.map((s) => s.phase * (Math.PI / 180))),
     dampings: pad(sources.map((s) => s.damping)),
   };
 }
@@ -148,12 +148,12 @@ export const PARAMETER_CONFIGS: ParameterConfig[] = [
     key: "phase",
     label: "Anfangsphase",
     symbol: "φ",
-    unit: "rad",
+    unit: "°",
     defaultValue: DEFAULT_WAVE_PARAMS.phase,
-    min: -Math.PI,
-    max: Math.PI,
-    step: 0.01,
-    precision: 2,
+    min: -180,
+    max: 180,
+    step: 1,
+    precision: 0,
   },
   {
     key: "damping",

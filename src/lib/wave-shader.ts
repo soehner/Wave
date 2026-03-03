@@ -76,7 +76,13 @@ export const waveVertexShader = /* glsl */ `
 
       float r = distanceToSource(position.xy, u_sourcePositions[i]);
       float envelope = exp(-u_dampings[i] * r);
-      z += u_amplitudes[i] * envelope * sin(u_waveNumbers[i] * r - u_angularFreqs[i] * u_time + u_phases[i]);
+
+      // Wellenfront: Welle breitet sich mit v = omega/k aus
+      float waveSpeed = u_angularFreqs[i] / max(u_waveNumbers[i], 0.001);
+      float wavefrontR = waveSpeed * u_time;
+      float mask = 1.0 - smoothstep(wavefrontR - 0.3, wavefrontR + 0.1, r);
+
+      z += u_amplitudes[i] * envelope * sin(u_waveNumbers[i] * r - u_angularFreqs[i] * u_time + u_phases[i]) * mask;
 
       sumMaxAmp += u_amplitudes[i];
     }
