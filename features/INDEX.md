@@ -6,7 +6,7 @@
 |----|---------|--------|----------|
 | PROJ-1 | 3D-Wellenvisualisierung (Core Rendering Engine) | Deployed | 2026-03-03 |
 | PROJ-2 | Wellenparameter-Steuerung | Deployed | 2026-03-03 |
-| PROJ-3 | Wellenquellen-Konfiguration | Geplant | 2026-03-03 |
+| PROJ-3 | Wellenquellen-Konfiguration | In Arbeit | 2026-03-03 |
 | PROJ-4 | Schnittebenen-Analyse | Geplant | 2026-03-03 |
 
 ## Nächste verfügbare ID: PROJ-5
