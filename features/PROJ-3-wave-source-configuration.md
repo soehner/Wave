@@ -1,8 +1,10 @@
 # PROJ-3: Wellenquellen-Konfiguration
 
-## Status: In Review
+## Status: Deployed
 **Erstellt:** 2026-03-03
 **Zuletzt aktualisiert:** 2026-03-03
+**Deployed:** 2026-03-03
+**Produktions-URL:** https://wave-chi-livid.vercel.app
 
 ## Abhängigkeiten
 - Benötigt: PROJ-1 (3D-Wellenvisualisierung) — Quellen definieren, wo Wellen entstehen
