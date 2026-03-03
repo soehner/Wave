@@ -3,16 +3,24 @@
 import { useState, useCallback, useEffect } from "react";
 import { useWaveAnimation } from "@/hooks/useWaveAnimation";
 import { useWaveParams } from "@/hooks/useWaveParams";
+import { useWaveSources } from "@/hooks/useWaveSources";
 import { ControlBar } from "./ControlBar";
 import { ParameterPanel } from "./ParameterPanel";
+import { SourcePanel } from "./SourcePanel";
 
 export function WaveVisualization() {
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [fps, setFps] = useState<number | undefined>();
   const [isSmallViewport, setIsSmallViewport] = useState(false);
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [isPanelOpen, setIsPanelOpen] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth >= 1280 : true
+  );
+  const [isSourcePanelOpen, setIsSourcePanelOpen] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth >= 1280 : true
+  );
 
-  const waveParamsHook = useWaveParams();
+  const waveSourcesHook = useWaveSources();
+  const waveParamsHook = useWaveParams(waveSourcesHook.config.count);
 
   useEffect(() => {
     const check = () => setIsSmallViewport(window.innerWidth < 1024);
@@ -25,10 +33,11 @@ export function WaveVisualization() {
     setFps(newFps);
   }, []);
 
-  const { containerRef, resetCamera, webglSupported } = useWaveAnimation({
+  const { containerRef, resetCamera, resetTime, webglSupported } = useWaveAnimation({
     isPlaying,
     onFpsUpdate: handleFpsUpdate,
-    waveUniforms: waveParamsHook.uniforms,
+    waveUniformArrays: waveParamsHook.uniformArrays,
+    sourceUniforms: waveSourcesHook.sourceUniforms,
   });
 
   if (!webglSupported) {
@@ -62,11 +71,17 @@ export function WaveVisualization() {
           Fuer die beste Darstellung empfehlen wir eine Bildschirmbreite von mindestens 1024 px.
         </div>
       )}
-      {/* Hauptbereich: 3D-Canvas + Parameter-Panel */}
+      {/* Hauptbereich: SourcePanel (links) + 3D-Canvas + ParameterPanel (rechts) */}
       <div className="flex flex-1 min-h-0 relative">
+        <SourcePanel
+          sourceHook={waveSourcesHook}
+          isOpen={isSourcePanelOpen}
+          onOpenChange={setIsSourcePanelOpen}
+        />
         <div ref={containerRef} className="flex-1 min-h-0" />
         <ParameterPanel
           waveParamsHook={waveParamsHook}
+          sourceCount={waveSourcesHook.config.count}
           isOpen={isPanelOpen}
           onOpenChange={setIsPanelOpen}
         />
@@ -74,6 +89,7 @@ export function WaveVisualization() {
       <ControlBar
         isPlaying={isPlaying}
         onTogglePlay={() => setIsPlaying((prev) => !prev)}
+        onRestartWave={resetTime}
         onResetCamera={resetCamera}
         fps={fps}
       />

@@ -3,10 +3,11 @@
 import { useState, useCallback, useMemo } from "react";
 import {
   type WaveParams,
+  type WaveUniformArrays,
   DEFAULT_WAVE_PARAMS,
   PARAMETER_CONFIGS,
   computeDerivedValues,
-  paramsToUniforms,
+  paramsArrayToUniforms,
   waveParamsSchema,
   type ParameterConfig,
 } from "@/lib/wave-params";
@@ -59,16 +60,33 @@ function createInitialSliderStates(): SliderStates {
   };
 }
 
+function sliderStatesToParams(states: SliderStates): WaveParams {
+  const result: Record<string, number> = {};
+  for (const config of PARAMETER_CONFIGS) {
+    const state = states[config.key];
+    result[config.key] = computeEffectiveValue(
+      state.baseValue,
+      state.sliderPercent,
+      config
+    );
+  }
+  return result as unknown as WaveParams;
+}
+
 export interface UseWaveParamsReturn {
-  /** Die aktuellen effektiven Parameterwerte */
+  /** Effektive Parameter der aktuell angezeigten Quelle (oder Quelle 0 bei "Alle") */
   params: WaveParams;
-  /** Slider-Zustaende fuer alle Parameter */
+  /** Slider-Zustaende der aktuell angezeigten Quelle */
   sliderStates: SliderStates;
-  /** Abgeleitete Werte (omega, k, v) */
+  /** Abgeleitete Werte der aktuell angezeigten Quelle */
   derived: ReturnType<typeof computeDerivedValues>;
-  /** Uniform-Werte fuer den Three.js-Shader */
-  uniforms: ReturnType<typeof paramsToUniforms>;
-  /** Slider-Position aendern (throttled via Aufrufer) */
+  /** Array-Uniforms fuer den Shader (alle Quellen) */
+  uniformArrays: WaveUniformArrays;
+  /** Aktiver Quellenindex (null = "Alle"-Modus) */
+  activeSourceIndex: number | null;
+  /** Aktiven Quellenindex setzen */
+  setActiveSourceIndex: (index: number | null) => void;
+  /** Slider-Position aendern */
   setSliderPercent: (key: keyof WaveParams, percent: number) => void;
   /** Absolut-Wert im Input aendern (setzt Slider auf 0%) */
   setBaseValue: (key: keyof WaveParams, value: number) => void;
@@ -80,30 +98,52 @@ export interface UseWaveParamsReturn {
   validateValue: (key: keyof WaveParams, value: number) => string | null;
 }
 
-export function useWaveParams(): UseWaveParamsReturn {
-  const [sliderStates, setSliderStates] = useState<SliderStates>(
-    createInitialSliderStates
+export function useWaveParams(sourceCount: number): UseWaveParamsReturn {
+  const [allSliderStates, setAllSliderStates] = useState<SliderStates[]>([
+    createInitialSliderStates(),
+  ]);
+  const [activeSourceIndex, setActiveSourceIndex] = useState<number | null>(
+    null
   );
   const [validationErrors, setValidationErrors] = useState<
     Partial<Record<keyof WaveParams, string>>
   >({});
 
-  // Berechne effektive Parameter aus den Slider-States
-  const params = useMemo<WaveParams>(() => {
-    const result: Record<string, number> = {};
-    for (const config of PARAMETER_CONFIGS) {
-      const state = sliderStates[config.key];
-      result[config.key] = computeEffectiveValue(
-        state.baseValue,
-        state.sliderPercent,
-        config
-      );
+  // Array-Groesse an sourceCount anpassen (synchron waehrend Render)
+  const [prevSourceCount, setPrevSourceCount] = useState(sourceCount);
+  if (sourceCount !== prevSourceCount) {
+    setPrevSourceCount(sourceCount);
+    if (allSliderStates.length < sourceCount) {
+      const extended = [...allSliderStates];
+      while (extended.length < sourceCount) {
+        extended.push(createInitialSliderStates());
+      }
+      setAllSliderStates(extended);
+    } else if (allSliderStates.length > sourceCount) {
+      setAllSliderStates(allSliderStates.slice(0, sourceCount));
     }
-    return result as unknown as WaveParams;
-  }, [sliderStates]);
+    if (activeSourceIndex !== null && activeSourceIndex >= sourceCount) {
+      setActiveSourceIndex(null);
+    }
+  }
 
+  // Alle Quellen als WaveParams berechnen
+  const allSourceParams = useMemo<WaveParams[]>(
+    () => allSliderStates.map(sliderStatesToParams),
+    [allSliderStates]
+  );
+
+  // Aktive Quelle: Index oder 0 bei "Alle"
+  const displayIndex = activeSourceIndex ?? 0;
+  const sliderStates = allSliderStates[displayIndex] ?? createInitialSliderStates();
+  const params = allSourceParams[displayIndex] ?? DEFAULT_WAVE_PARAMS;
   const derived = useMemo(() => computeDerivedValues(params), [params]);
-  const uniforms = useMemo(() => paramsToUniforms(params), [params]);
+
+  // Array-Uniforms fuer den Shader
+  const uniformArrays = useMemo(
+    () => paramsArrayToUniforms(allSourceParams),
+    [allSourceParams]
+  );
 
   const validateValue = useCallback(
     (key: keyof WaveParams, value: number): string | null => {
@@ -114,7 +154,6 @@ export function useWaveParams(): UseWaveParamsReturn {
         return "Ungueltige Eingabe";
       }
 
-      // Zod-Validierung fuer den einzelnen Parameter
       const testParams = { ...DEFAULT_WAVE_PARAMS, [key]: value };
       const result = waveParamsSchema.safeParse(testParams);
       if (!result.success) {
@@ -140,14 +179,19 @@ export function useWaveParams(): UseWaveParamsReturn {
   const setSliderPercent = useCallback(
     (key: keyof WaveParams, percent: number) => {
       const clampedPercent = Math.max(-100, Math.min(100, percent));
-      setSliderStates((prev) => ({
-        ...prev,
-        [key]: {
-          ...prev[key],
-          sliderPercent: clampedPercent,
-        },
-      }));
-      // Slider-Aenderung entfernt Validierungsfehler
+      setAllSliderStates((prev) =>
+        prev.map((states, i) => {
+          // "Alle"-Modus: alle aendern; Einzelmodus: nur aktive Quelle
+          if (activeSourceIndex !== null && i !== activeSourceIndex) return states;
+          return {
+            ...states,
+            [key]: {
+              ...states[key],
+              sliderPercent: clampedPercent,
+            },
+          };
+        })
+      );
       setValidationErrors((prev) => {
         if (prev[key]) {
           const next = { ...prev };
@@ -157,7 +201,7 @@ export function useWaveParams(): UseWaveParamsReturn {
         return prev;
       });
     },
-    []
+    [activeSourceIndex]
   );
 
   const setBaseValue = useCallback(
@@ -168,14 +212,18 @@ export function useWaveParams(): UseWaveParamsReturn {
         return;
       }
 
-      setSliderStates((prev) => ({
-        ...prev,
-        [key]: {
-          baseValue: value,
-          // Slider auf 0% setzen wenn der Benutzer den Absolutwert aendert
-          sliderPercent: 0,
-        },
-      }));
+      setAllSliderStates((prev) =>
+        prev.map((states, i) => {
+          if (activeSourceIndex !== null && i !== activeSourceIndex) return states;
+          return {
+            ...states,
+            [key]: {
+              baseValue: value,
+              sliderPercent: 0,
+            },
+          };
+        })
+      );
 
       setValidationErrors((prev) => {
         if (prev[key]) {
@@ -186,19 +234,26 @@ export function useWaveParams(): UseWaveParamsReturn {
         return prev;
       });
     },
-    [validateValue]
+    [activeSourceIndex, validateValue]
   );
 
   const resetAll = useCallback(() => {
-    setSliderStates(createInitialSliderStates());
+    setAllSliderStates((prev) =>
+      prev.map((_, i) => {
+        if (activeSourceIndex !== null && i !== activeSourceIndex) return prev[i];
+        return createInitialSliderStates();
+      })
+    );
     setValidationErrors({});
-  }, []);
+  }, [activeSourceIndex]);
 
   return {
     params,
     sliderStates,
     derived,
-    uniforms,
+    uniformArrays,
+    activeSourceIndex,
+    setActiveSourceIndex,
     setSliderPercent,
     setBaseValue,
     resetAll,

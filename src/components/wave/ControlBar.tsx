@@ -1,11 +1,12 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Play, Pause, RotateCcw } from "lucide-react";
+import { Play, Pause, RotateCcw, SkipBack } from "lucide-react";
 
 interface ControlBarProps {
   isPlaying: boolean;
   onTogglePlay: () => void;
+  onRestartWave: () => void;
   onResetCamera: () => void;
   fps?: number;
 }
@@ -13,6 +14,7 @@ interface ControlBarProps {
 export function ControlBar({
   isPlaying,
   onTogglePlay,
+  onRestartWave,
   onResetCamera,
   fps,
 }: ControlBarProps) {
@@ -36,6 +38,15 @@ export function ControlBar({
               <span className="hidden sm:inline">Abspielen</span>
             </>
           )}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRestartWave}
+          className="gap-2"
+        >
+          <SkipBack className="h-4 w-4" />
+          <span className="hidden sm:inline">Neu starten</span>
         </Button>
         <Button
           variant="ghost"

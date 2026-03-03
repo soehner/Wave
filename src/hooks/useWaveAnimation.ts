@@ -4,7 +4,8 @@ import { useRef, useEffect, useCallback, useSyncExternalStore } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { waveVertexShader, waveFragmentShader } from "@/lib/wave-shader";
-import type { WaveUniforms } from "@/lib/wave-params";
+import type { WaveUniformArrays } from "@/lib/wave-params";
+import type { SourceUniforms } from "@/lib/wave-sources";
 
 function checkWebGLSupport(): boolean {
   if (typeof document === "undefined") return true;
@@ -26,19 +27,23 @@ const DEFAULT_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
 interface UseWaveAnimationOptions {
   isPlaying: boolean;
   onFpsUpdate?: (fps: number) => void;
-  waveUniforms?: WaveUniforms;
+  waveUniformArrays?: WaveUniformArrays;
+  sourceUniforms?: SourceUniforms;
 }
 
 export function useWaveAnimation({
   isPlaying,
   onFpsUpdate,
-  waveUniforms,
+  waveUniformArrays,
+  sourceUniforms,
 }: UseWaveAnimationOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const uniformsRef = useRef<Record<string, THREE.IUniform> | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const markerGroupRef = useRef<THREE.Group | null>(null);
   const animFrameRef = useRef<number>(0);
   const timeRef = useRef<number>(0);
   const prevTimestampRef = useRef<number>(0);
@@ -57,29 +62,124 @@ export function useWaveAnimation({
     onFpsUpdateRef.current = onFpsUpdate;
   }, [onFpsUpdate]);
 
-  // Uniform-Werte aktualisieren wenn sich Parameter aendern
-  const uAmplitude = waveUniforms?.amplitude;
-  const uWaveNumber = waveUniforms?.waveNumber;
-  const uAngularFreq = waveUniforms?.angularFreq;
-  const uPhase = waveUniforms?.phase;
-  const uDamping = waveUniforms?.damping;
+  // Uniform-Arrays aktualisieren wenn sich Parameter aendern
+  useEffect(() => {
+    if (!uniformsRef.current || !waveUniformArrays) return;
+    const u = uniformsRef.current;
+    u.u_amplitudes.value = waveUniformArrays.amplitudes;
+    u.u_waveNumbers.value = waveUniformArrays.waveNumbers;
+    u.u_angularFreqs.value = waveUniformArrays.angularFreqs;
+    u.u_phases.value = waveUniformArrays.phases;
+    u.u_dampings.value = waveUniformArrays.dampings;
+  }, [waveUniformArrays]);
+
+  // Source-Uniforms aktualisieren und Marker-Meshes verwalten
+  const sType = sourceUniforms?.sourceType;
+  const sCount = sourceUniforms?.sourceCount;
+  const sPositions = sourceUniforms?.sourcePositions;
 
   useEffect(() => {
     if (!uniformsRef.current) return;
-    if (uAmplitude === undefined) return;
+    if (sType === undefined || sCount === undefined || !sPositions) return;
     const u = uniformsRef.current;
-    u.u_amplitude.value = uAmplitude;
-    u.u_waveNumber.value = uWaveNumber!;
-    u.u_angularFreq.value = uAngularFreq!;
-    u.u_phase.value = uPhase!;
-    u.u_damping.value = uDamping!;
-  }, [uAmplitude, uWaveNumber, uAngularFreq, uPhase, uDamping]);
+    u.u_sourceType.value = sType;
+    u.u_sourceCount.value = sCount;
+
+    // Positionen in das vec2-Array schreiben
+    const posArray = u.u_sourcePositions.value as THREE.Vector2[];
+    for (let i = 0; i < 8; i++) {
+      if (i < sPositions.length) {
+        posArray[i].set(sPositions[i].x, sPositions[i].y);
+      } else {
+        posArray[i].set(0, 0);
+      }
+    }
+
+    // Marker-Meshes aktualisieren
+    const group = markerGroupRef.current;
+    if (!group) return;
+
+    // Alte Marker entfernen
+    while (group.children.length > 0) {
+      const child = group.children[0];
+      group.remove(child);
+      if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m) => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    }
+
+    const markerMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
+      transparent: true,
+      opacity: 0.8,
+    });
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: 0xff6600,
+      linewidth: 2,
+    });
+
+    const CIRCLE_RADIUS = 1.0;
+    const BAR_HALF_LENGTH = 2.0;
+    const TRI_SIZE = 1.5;
+
+    for (let i = 0; i < sCount; i++) {
+      const pos = sPositions[i];
+      if (!pos) continue;
+
+      if (sType === 0) {
+        // POINT: kleine Kugel
+        const geo = new THREE.SphereGeometry(0.12, 16, 16);
+        const marker = new THREE.Mesh(geo, markerMaterial.clone());
+        marker.position.set(pos.x, pos.y, 0);
+        group.add(marker);
+      } else if (sType === 1) {
+        // CIRCLE: Ring
+        const curve = new THREE.EllipseCurve(0, 0, CIRCLE_RADIUS, CIRCLE_RADIUS, 0, Math.PI * 2, false, 0);
+        const pts = curve.getPoints(64);
+        const geo = new THREE.BufferGeometry().setFromPoints(
+          pts.map((p) => new THREE.Vector3(p.x + pos.x, p.y + pos.y, 0))
+        );
+        const line = new THREE.Line(geo, lineMaterial.clone());
+        group.add(line);
+      } else if (sType === 2) {
+        // BAR: vertikale Linie
+        const pts = [
+          new THREE.Vector3(pos.x, pos.y - BAR_HALF_LENGTH, 0),
+          new THREE.Vector3(pos.x, pos.y + BAR_HALF_LENGTH, 0),
+        ];
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        const line = new THREE.Line(geo, lineMaterial.clone());
+        group.add(line);
+      } else {
+        // TRIANGLE: gleichseitiges Dreieck
+        const a = new THREE.Vector3(pos.x, pos.y + TRI_SIZE, 0);
+        const b = new THREE.Vector3(pos.x - TRI_SIZE * 0.866, pos.y - TRI_SIZE * 0.5, 0);
+        const c = new THREE.Vector3(pos.x + TRI_SIZE * 0.866, pos.y - TRI_SIZE * 0.5, 0);
+        const geo = new THREE.BufferGeometry().setFromPoints([a, b, c, a]);
+        const line = new THREE.Line(geo, lineMaterial.clone());
+        group.add(line);
+      }
+    }
+  }, [sType, sCount, sPositions]);
 
   const resetCamera = useCallback(() => {
     if (cameraRef.current && controlsRef.current) {
       cameraRef.current.position.copy(DEFAULT_CAMERA_POSITION);
       controlsRef.current.target.copy(DEFAULT_CAMERA_TARGET);
       controlsRef.current.update();
+    }
+  }, []);
+
+  const resetTime = useCallback(() => {
+    timeRef.current = 0;
+    prevTimestampRef.current = 0;
+    if (uniformsRef.current) {
+      uniformsRef.current.u_time.value = 0;
     }
   }, []);
 
@@ -99,6 +199,12 @@ export function useWaveAnimation({
 
     // Szene
     const scene = new THREE.Scene();
+    sceneRef.current = scene;
+
+    // Quellenmarker-Gruppe
+    const markerGroup = new THREE.Group();
+    scene.add(markerGroup);
+    markerGroupRef.current = markerGroup;
 
     // Kamera
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
@@ -188,13 +294,18 @@ export function useWaveAnimation({
     );
 
     // Initiale Uniform-Werte (Defaults; der separate Effekt ueberschreibt sie sofort)
+    const defaultPositions = Array.from({ length: 8 }, () => new THREE.Vector2(0, 0));
+    const zeros = [0, 0, 0, 0, 0, 0, 0, 0];
     const uniforms = {
       u_time: { value: 0.0 },
-      u_amplitude: { value: 1.0 },
-      u_waveNumber: { value: Math.PI },
-      u_angularFreq: { value: 2 * Math.PI },
-      u_phase: { value: 0.0 },
-      u_damping: { value: 0.0 },
+      u_amplitudes: { value: [1.0, ...zeros.slice(1)] },
+      u_waveNumbers: { value: [Math.PI, ...zeros.slice(1)] },
+      u_angularFreqs: { value: [2 * Math.PI, ...zeros.slice(1)] },
+      u_phases: { value: [...zeros] },
+      u_dampings: { value: [...zeros] },
+      u_sourceType: { value: 0 },
+      u_sourceCount: { value: 1 },
+      u_sourcePositions: { value: defaultPositions },
     };
     uniformsRef.current = uniforms;
 
@@ -277,6 +388,7 @@ export function useWaveAnimation({
   return {
     containerRef,
     resetCamera,
+    resetTime,
     webglSupported: isWebGLSupported,
   };
 }

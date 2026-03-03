@@ -6,6 +6,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronsRight, ChevronsLeft, RotateCcw } from "lucide-react";
 import { PARAMETER_CONFIGS } from "@/lib/wave-params";
 import type { UseWaveParamsReturn } from "@/hooks/useWaveParams";
@@ -14,6 +15,7 @@ import { FormulaDisplay } from "./FormulaDisplay";
 
 interface ParameterPanelProps {
   waveParamsHook: UseWaveParamsReturn;
+  sourceCount: number;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -29,6 +31,7 @@ interface ParameterPanelProps {
  */
 export function ParameterPanel({
   waveParamsHook,
+  sourceCount,
   isOpen,
   onOpenChange,
 }: ParameterPanelProps) {
@@ -36,6 +39,8 @@ export function ParameterPanel({
     params,
     sliderStates,
     derived,
+    activeSourceIndex,
+    setActiveSourceIndex,
     setSliderPercent,
     setBaseValue,
     resetAll,
@@ -67,18 +72,49 @@ export function ParameterPanel({
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 bg-background z-10">
-            <h2 className="text-sm font-semibold">Wellenparameter</h2>
+            <h2 className="text-sm font-semibold">
+              {activeSourceIndex === null
+                ? "Wellenparameter"
+                : `Parameter Quelle ${activeSourceIndex + 1}`}
+            </h2>
             <Button
               variant="ghost"
               size="sm"
               onClick={resetAll}
               className="gap-1.5 h-7 text-xs"
-              aria-label="Alle Parameter auf Standardwerte zuruecksetzen"
+              aria-label={
+                activeSourceIndex === null
+                  ? "Alle Parameter auf Standardwerte zuruecksetzen"
+                  : `Parameter von Quelle ${activeSourceIndex + 1} zuruecksetzen`
+              }
             >
               <RotateCcw className="h-3 w-3" />
               Zuruecksetzen
             </Button>
           </div>
+
+          {/* Quellen-Tabs (nur bei >= 2 Quellen) */}
+          {sourceCount >= 2 && (
+            <div className="px-4 pt-3">
+              <Tabs
+                value={activeSourceIndex === null ? "all" : String(activeSourceIndex)}
+                onValueChange={(val) => {
+                  setActiveSourceIndex(val === "all" ? null : parseInt(val, 10));
+                }}
+              >
+                <TabsList className="w-full flex-wrap h-auto gap-1 p-1">
+                  <TabsTrigger value="all" className="text-xs flex-shrink-0">
+                    Alle
+                  </TabsTrigger>
+                  {Array.from({ length: sourceCount }, (_, i) => (
+                    <TabsTrigger key={i} value={String(i)} className="text-xs flex-shrink-0">
+                      Q{i + 1}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            </div>
+          )}
 
           <div className="px-4 py-3 space-y-5">
             {/* Einstellbare Parameter */}
