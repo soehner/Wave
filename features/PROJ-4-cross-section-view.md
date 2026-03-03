@@ -88,7 +88,108 @@ Das 2D-Diagramm erscheint nur, wenn die Schnittebene aktiviert ist. Es teilt sic
 <!-- Folgende Abschnitte werden von nachfolgenden Skills hinzugefügt -->
 
 ## Technisches Design (Solution Architect)
-_Wird von /architecture hinzugefügt_
+
+### Kernprinzip: CPU-seitige Wellenberechnung
+
+Die 3D-Wellenoberfläche wird vollständig auf der Grafikkarte (GPU) berechnet — der Browser-Code hat keinen direkten Zugriff auf diese Werte. Für das 2D-Diagramm wird deshalb **dieselbe physikalische Formel ein zweites Mal in TypeScript (CPU) nachgebaut**. Da alle Parameter (Amplitude, Frequenz usw.) bereits als JavaScript-Werte vorliegen, ist das rechentechnisch sehr günstig (~100 Datenpunkte pro Frame).
+
+---
+
+### Komponentenstruktur (Baumansicht)
+
+```
+WaveVisualization (bestehend, Wurzel-Komponente)
+  ├── SourcePanel (bestehend, links) — keine Änderung
+  │
+  ├── [Hauptbereich, flex-col wenn Schnitt aktiv]
+  │     │
+  │     ├── [3D-Canvas-Bereich] — bleibt flex-1
+  │     │     useWaveAnimation (bestehend) ← erhält geteilte Zeit-Referenz
+  │     │     + THREE.Plane (halbtransparente Schnittebene, 3D) — NEU
+  │     │     + THREE.Line  (Schnittkurve in 3D, farbig)       — NEU
+  │     │
+  │     └── CrossSectionPanel (NEU) ← nur sichtbar wenn Schnitt aktiv
+  │           ├── [Steuerleiste]
+  │           │     ├── X/Y-Toggle (shadcn Tabs)
+  │           │     └── Positions-Slider (shadcn Slider, –5 m bis +5 m)
+  │           └── CrossSectionChart (NEU)
+  │                 └── shadcn/ui Chart (Recharts LineChart)
+  │                       ← Quellenmarkierungen als gestrichelte Linien (ReferenceLine)
+  │
+  ├── ParameterPanel (bestehend, rechts) — keine Änderung
+  │
+  └── ControlBar (bestehend) ← + Toggle-Button "Schnittebene"
+```
+
+---
+
+### Datenmodell
+
+**Zustand in `useCrossSection` (neuer Hook):**
+```
+isActive:    boolean       — Schnitt ein/aus
+orientation: 'x' | 'y'   — Schnitt senkrecht zur X- oder Y-Achse
+position:    number        — Position der Ebene in Meter (–5 bis +5)
+chartData:   Punkt[]       — { coord: number; z: number }[] (ca. 200 Punkte)
+```
+
+**Geteilte Zeit-Referenz:**
+```
+timeRef: MutableRefObject<number>   — vom WaveVisualization nach außen gehoben
+                                       beide Hooks lesen dieselbe Zeit
+```
+
+Gespeichert in: React-Arbeitsspeicher (kein localStorage, kein Server).
+
+---
+
+### Technische Entscheidungen (Begründungen)
+
+| Entscheidung | Alternative | Warum diese Wahl |
+|---|---|---|
+| **CPU-Wellenformel in TypeScript** | GPU-Auslesefunktion (readRenderTargetPixels) | GPU-Auslesen ist langsam und komplex; CPU mit ~200 Punkten ist bei Weitem schnell genug |
+| **shadcn/ui Chart (Recharts)** | Chart.js, D3.js, reine Canvas-Zeichnung | shadcn/ui Chart passt nahtlos ins bestehende Design; Recharts ist bereits indirekt vorhanden; Achsenbeschriftungen und Referenzlinien out-of-the-box |
+| **Geteilte Zeit-Referenz (`useRef`)** | onTimeUpdate-Callback (jedes Frame) | Callback würde React bei jedem Frame neu rendern; Ref ist zustandslos und verursacht keine Re-renders |
+| **Eigener `requestAnimationFrame`-Loop im Chart-Hook** | Am Three.js-Loop hängen | Entkoppelt Diagramm von 3D-Szene; Diagramm kann auf 30 FPS gedrosselt werden ohne 3D zu beeinflussen |
+| **3D-Schnittebene als THREE.Plane-Mesh** | Nur 2D-Indikator | Zeigt Lehrkräften visuell, wo geschnitten wird — wichtig für Erklärung |
+
+---
+
+### Neue Dateien
+
+| Datei | Aufgabe |
+|---|---|
+| `src/lib/wave-math.ts` | TypeScript-Nachbau der GLSL-Wellenformel; berechnet z(x, y, t) für beliebige Punkte |
+| `src/hooks/useCrossSection.ts` | Zustand (isActive, orientation, position), Datenberechnung, Animation-Loop |
+| `src/components/wave/CrossSectionPanel.tsx` | Container: Steuerleiste (X/Y-Toggle, Slider) + Chart-Komponente |
+| `src/components/wave/CrossSectionChart.tsx` | shadcn/ui Chart mit Recharts LineChart + ReferenceLine für Quellen |
+
+### Geänderte Dateien
+
+| Datei | Änderung |
+|---|---|
+| `src/hooks/useWaveAnimation.ts` | `timeRef` nach außen exponieren (als Return-Wert); 3D-Schnittebene + 3D-Schnittkurve verwalten |
+| `src/components/wave/WaveVisualization.tsx` | `useCrossSection` einbinden; `timeRef` an beide Hooks übergeben; Layout auf flex-col umstellen |
+| `src/components/wave/ControlBar.tsx` | Toggle-Button "Schnittebene" hinzufügen (Scissors-Icon) |
+
+---
+
+### Abhängigkeiten (neue Pakete)
+
+| Paket | Zweck | Installation |
+|---|---|---|
+| **shadcn/ui chart** | 2D-Liniendiagramm (wraps Recharts + recharts) | `npx shadcn@latest add chart` |
+
+Recharts wird als Peer-Dependency von shadcn/ui chart automatisch installiert.
+
+---
+
+### Performance-Budget
+
+- **Datenpunkte pro Frame:** ~200 (alle 0,05 m über das 10 m breite Feld)
+- **Diagramm-Update-Rate:** gedrosselt auf 30 FPS (jedes 2. Frame bei 60 FPS)
+- **3D-Schnittebene:** statisches Mesh, nur bei Positions-/Orientierungsänderung neu positioniert
+- **Erwarteter Overhead:** < 5 % CPU zusätzlich zur bestehenden 3D-Darstellung
 
 ## QA-Testergebnisse
 _Wird von /qa hinzugefügt_
