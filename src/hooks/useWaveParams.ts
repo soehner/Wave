@@ -92,6 +92,8 @@ export interface UseWaveParamsReturn {
   setBaseValue: (key: keyof WaveParams, value: number) => void;
   /** Alle Parameter auf Defaults zuruecksetzen */
   resetAll: () => void;
+  /** Alle Quellen atomar auf gegebene Parameter setzen (fuer Presets) */
+  applyParams: (params: WaveParams, perSourceParams?: WaveParams[]) => void;
   /** Validierungsfehler pro Parameter (leer = kein Fehler) */
   validationErrors: Partial<Record<keyof WaveParams, string>>;
   /** Validiert einen Wert und gibt einen Fehlerstring zurueck (oder null) */
@@ -247,6 +249,26 @@ export function useWaveParams(sourceCount: number): UseWaveParamsReturn {
     setValidationErrors({});
   }, [activeSourceIndex]);
 
+  const applyParams = useCallback((newParams: WaveParams, perSourceParams?: WaveParams[]) => {
+    const toSliderStates = (p: WaveParams): SliderStates => ({
+      amplitude: { baseValue: p.amplitude, sliderPercent: 0 },
+      frequency: { baseValue: p.frequency, sliderPercent: 0 },
+      wavelength: { baseValue: p.wavelength, sliderPercent: 0 },
+      phase: { baseValue: p.phase, sliderPercent: 0 },
+      damping: { baseValue: p.damping, sliderPercent: 0 },
+    });
+    const defaultState = toSliderStates(newParams);
+    setAllSliderStates((prev) =>
+      prev.map((_, i) =>
+        perSourceParams && perSourceParams[i]
+          ? toSliderStates(perSourceParams[i])
+          : defaultState
+      )
+    );
+    setActiveSourceIndex(null);
+    setValidationErrors({});
+  }, []);
+
   return {
     params,
     sliderStates,
@@ -257,6 +279,7 @@ export function useWaveParams(sourceCount: number): UseWaveParamsReturn {
     setSliderPercent,
     setBaseValue,
     resetAll,
+    applyParams,
     validationErrors,
     validateValue,
   };

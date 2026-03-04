@@ -117,22 +117,25 @@ export function useCrossSection({
     };
   }, [isActive, timeRef]);
 
-  // Beim Aendern von Orientierung/Position bei pausierter Animation
-  // einmalig neu berechnen
+  // Beim Aendern von Orientierung/Position/Parametern bei pausierter Animation
+  // einmalig neu berechnen (via rAF um synchrones setState im Effekt zu vermeiden)
   useEffect(() => {
     if (!isActive || isPlayingRef.current) return;
-    if (!waveUniformsRef.current || !sourceUniformsRef.current) return;
+    if (!waveUniformArrays || !sourceUniforms) return;
 
-    const t = timeRef.current ?? 0;
-    const data = computeCrossSectionData(
-      orientation,
-      position,
-      t,
-      waveUniformsRef.current,
-      sourceUniformsRef.current
-    );
-    setRawChartData(data);
-  }, [isActive, orientation, position, timeRef]);
+    const id = requestAnimationFrame(() => {
+      const t = timeRef.current ?? 0;
+      const data = computeCrossSectionData(
+        orientation,
+        position,
+        t,
+        waveUniformArrays,
+        sourceUniforms
+      );
+      setRawChartData(data);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [isActive, orientation, position, waveUniformArrays, sourceUniforms, timeRef]);
 
   return {
     chartData,

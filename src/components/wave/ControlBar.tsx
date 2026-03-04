@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Play, Pause, RotateCcw, SkipBack, Scissors } from "lucide-react";
+import { PresetSelector } from "./PresetSelector";
 
 interface ControlBarProps {
   isPlaying: boolean;
@@ -11,6 +12,10 @@ interface ControlBarProps {
   fps?: number;
   isCrossSectionActive?: boolean;
   onToggleCrossSection?: () => void;
+  activePresetId?: string | null;
+  isPresetDirty?: boolean;
+  onLoadPreset?: (id: string) => void;
+  onResetToPreset?: () => void;
 }
 
 export function ControlBar({
@@ -21,6 +26,10 @@ export function ControlBar({
   fps,
   isCrossSectionActive,
   onToggleCrossSection,
+  activePresetId,
+  isPresetDirty,
+  onLoadPreset,
+  onResetToPreset,
 }: ControlBarProps) {
   return (
     <div className="flex items-center justify-between gap-4 px-4 py-3 border-t bg-background/80 backdrop-blur-sm">
@@ -65,7 +74,20 @@ export function ControlBar({
         {/* Trennlinie */}
         <div className="h-5 w-px bg-border" />
 
+        {onLoadPreset && onResetToPreset && (
+          <>
+            <PresetSelector
+              activePresetId={activePresetId ?? null}
+              isDirty={isPresetDirty ?? false}
+              onLoadPreset={onLoadPreset}
+              onResetToPreset={onResetToPreset}
+            />
+          </>
+        )}
+
         {onToggleCrossSection && (
+          <>
+          <div className="h-5 w-px bg-border" />
           <Button
             variant={isCrossSectionActive ? "default" : "outline"}
             size="sm"
@@ -77,6 +99,7 @@ export function ControlBar({
             <Scissors className="h-4 w-4" />
             <span className="hidden sm:inline">Schnittebene</span>
           </Button>
+          </>
         )}
       </div>
       {fps !== undefined && (

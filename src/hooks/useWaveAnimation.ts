@@ -203,11 +203,11 @@ export function useWaveAnimation({
     if (!csActive) return;
 
     // Halbtransparente Schnittebene
-    const planeGeo = new THREE.PlaneGeometry(PLANE_SIZE, PLANE_SIZE);
+    const planeGeo = new THREE.PlaneGeometry(PLANE_SIZE, 4);
     const planeMat = new THREE.MeshBasicMaterial({
       color: 0x00ffff,
       transparent: true,
-      opacity: 0.15,
+      opacity: 0.25,
       side: THREE.DoubleSide,
       depthWrite: false,
     });

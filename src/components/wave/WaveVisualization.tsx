@@ -5,12 +5,15 @@ import { useWaveAnimation } from "@/hooks/useWaveAnimation";
 import { useWaveParams } from "@/hooks/useWaveParams";
 import { useWaveSources } from "@/hooks/useWaveSources";
 import { useCrossSection } from "@/hooks/useCrossSection";
+import { usePresets } from "@/hooks/usePresets";
 import { ControlBar } from "./ControlBar";
 import { ParameterPanel } from "./ParameterPanel";
 import { SourcePanel } from "./SourcePanel";
 import { CrossSectionPanel } from "./CrossSectionPanel";
 import { FIELD_HALF_SIZE } from "@/lib/wave-math";
 import type { CrossSectionPlane3DConfig } from "@/hooks/useWaveAnimation";
+import type { UseWaveParamsReturn } from "@/hooks/useWaveParams";
+import type { UseWaveSourcesReturn } from "@/hooks/useWaveSources";
 
 export function WaveVisualization() {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -30,6 +33,22 @@ export function WaveVisualization() {
 
   const waveSourcesHook = useWaveSources();
   const waveParamsHook = useWaveParams(waveSourcesHook.config.count);
+  const presetsHook = usePresets(waveParamsHook.applyParams, waveSourcesHook.applyConfig);
+
+  // Wrapped Hooks: markDirty bei manuellen Aenderungen
+  const wrappedParamsHook: UseWaveParamsReturn = {
+    ...waveParamsHook,
+    setSliderPercent: (key, percent) => { waveParamsHook.setSliderPercent(key, percent); presetsHook.markDirty(); },
+    setBaseValue: (key, value) => { waveParamsHook.setBaseValue(key, value); presetsHook.markDirty(); },
+    resetAll: () => { waveParamsHook.resetAll(); presetsHook.markDirty(); },
+  };
+  const wrappedSourcesHook: UseWaveSourcesReturn = {
+    ...waveSourcesHook,
+    setSourceType: (type) => { waveSourcesHook.setSourceType(type); presetsHook.markDirty(); },
+    setSourceCount: (count) => { waveSourcesHook.setSourceCount(count); presetsHook.markDirty(); },
+    setSourceSpacing: (spacing) => { waveSourcesHook.setSourceSpacing(spacing); presetsHook.markDirty(); },
+    resetSources: () => { waveSourcesHook.resetSources(); presetsHook.markDirty(); },
+  };
 
   useEffect(() => {
     const check = () => setIsSmallViewport(window.innerWidth < 1024);
@@ -112,7 +131,7 @@ export function WaveVisualization() {
       {/* Hauptbereich: SourcePanel (links) + 3D-Canvas + ParameterPanel (rechts) */}
       <div className="flex flex-1 min-h-0 relative">
         <SourcePanel
-          sourceHook={waveSourcesHook}
+          sourceHook={wrappedSourcesHook}
           isOpen={isSourcePanelOpen}
           onOpenChange={setIsSourcePanelOpen}
         />
@@ -139,7 +158,7 @@ export function WaveVisualization() {
           )}
         </div>
         <ParameterPanel
-          waveParamsHook={waveParamsHook}
+          waveParamsHook={wrappedParamsHook}
           sourceCount={waveSourcesHook.config.count}
           isOpen={isPanelOpen}
           onOpenChange={setIsPanelOpen}
@@ -156,6 +175,10 @@ export function WaveVisualization() {
         fps={fps}
         isCrossSectionActive={csIsActive}
         onToggleCrossSection={toggleCrossSection}
+        activePresetId={presetsHook.activePresetId}
+        isPresetDirty={presetsHook.isDirty}
+        onLoadPreset={presetsHook.loadPreset}
+        onResetToPreset={presetsHook.resetToPreset}
       />
     </div>
   );

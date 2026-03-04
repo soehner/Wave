@@ -19,6 +19,8 @@ export interface UseWaveSourcesReturn {
   setSourceCount: (count: number) => void;
   setSourceSpacing: (spacing: number) => void;
   resetSources: () => void;
+  /** Gesamte Quellenkonfiguration atomar setzen (fuer Presets) */
+  applyConfig: (config: SourceConfig) => void;
   sourceUniforms: ReturnType<typeof sourceConfigToUniforms>;
   isClipped: boolean;
 }
@@ -44,6 +46,10 @@ export function useWaveSources(): UseWaveSourcesReturn {
     setConfig(DEFAULT_SOURCE_CONFIG);
   }, []);
 
+  const applyConfig = useCallback((newConfig: SourceConfig) => {
+    setConfig(newConfig);
+  }, []);
+
   const sourceUniforms = useMemo(() => sourceConfigToUniforms(config), [config]);
   const isClipped = useMemo(
     () => hasClippedSources(config.count, config.spacing),
@@ -56,6 +62,7 @@ export function useWaveSources(): UseWaveSourcesReturn {
     setSourceCount,
     setSourceSpacing,
     resetSources,
+    applyConfig,
     sourceUniforms,
     isClipped,
   };
