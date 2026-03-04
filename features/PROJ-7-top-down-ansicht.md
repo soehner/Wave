@@ -1,6 +1,6 @@
 # PROJ-7: Top-Down-2D-Ansicht (Draufsicht als Farbkarte)
 
-## Status: Geplant
+## Status: In Review
 **Erstellt:** 2026-03-04
 **Zuletzt aktualisiert:** 2026-03-04
 
@@ -45,7 +45,103 @@
 <!-- Folgende Abschnitte werden von nachfolgenden Skills hinzugefügt -->
 
 ## Technisches Design (Solution Architect)
-_Wird von /architecture hinzugefügt_
+
+### Übersicht
+Reine Frontend-Erweiterung — kein Backend, kein LocalStorage, kein neues npm-Paket nötig.
+Der Kern-Trick: Die **gleiche Three.js-Szene** läuft weiter. Nur die Kamera wird ausgetauscht (PerspectiveCamera → OrthographicCamera) und OrbitControls wird auf "nur Zoom" eingeschränkt. Kein Shader-Umbau, keine neue Geometrie.
+
+---
+
+### Komponentenstruktur (visueller Baum)
+
+```
+WaveVisualization (State-Koordinator)
++-- SourcePanel (links, unverändert)
++-- Canvas-Bereich (Mitte)
+|   +-- Three.js Canvas (dieselbe Szene, nur Kamera wechselt)
+|   +-- [NEU] TopDownOverlay (absolut positioniertes CSS-Overlay, nur im 2D-Modus)
+|       +-- "X" Beschriftung (rechter Rand)
+|       +-- "Y" Beschriftung (oberer Rand)
+|       +-- "−5 m … +5 m" Grenzmarkierungen (alle vier Seiten)
++-- CrossSectionPanel (optional, bleibt aktiv; 3D-Schnittebene im Canvas ausgeblendet)
++-- ParameterPanel (rechts, unverändert)
++-- ControlBar (unten)
+    +-- [bestehend] Play/Pause, Neu starten, Kamera, Presets, Schnittebene, Zeitsteuerung
+    +-- [NEU] "3D / 2D" Toggle-Button (mit Layers-Icon)
+```
+
+---
+
+### Datenmodell (Klartext)
+
+```
+Neuer Zustand in WaveVisualization:
+  is2DView    boolean — false = 3D-Perspektive (Standard), true = 2D-Draufsicht
+
+Neue interne Referenzen in useWaveAnimation (keine React-Renders):
+  orthoCameraRef          Orthografische Kamera — einmalig beim Setup erstellt,
+                          bleibt inaktiv bis zum ersten 2D-Wechsel
+  saved3DPositionRef      Gespeicherte Kameraposition (Vector3) beim Wechsel in 2D,
+                          wird beim Zurückwechseln nach 3D wiederhergestellt
+  saved3DTargetRef        Gespeichertes Kameraziel (Vector3), ebenfalls gespeichert
+
+Kein Backend. Kein LocalStorage.
+```
+
+---
+
+### Wie der Kamerawechsel funktioniert (ohne Technik-Jargon)
+
+Stell dir vor, die 3D-Szene ist ein Aquarium. Die **Perspektivkamera** schaut von schräg oben hinein und zeigt Tiefenwirkung (Objekte in der Ferne kleiner). Die **orthografische Kamera** hängt senkrecht über dem Aquarium und zeigt alles gleich groß — wie ein Grundriss.
+
+Beim Wechsel zu 2D:
+1. Aktuelle 3D-Kameraposition wird gespeichert.
+2. Die orthografische Kamera wird direkt über dem Mittelpunkt positioniert und schaut senkrecht nach unten.
+3. Die Wellenfarbgebung (Blau-Weiß-Rot) funktioniert identisch — der Shader zeichnet weiterhin nach Wellenhöhe ein.
+4. Die 3D-Schnittebene (halbtransparente Fläche von PROJ-4) wird ausgeblendet — sie wäre in Draufsicht verwirrend.
+5. Quell-Marker (Punkte, Ringe, Linien) bleiben sichtbar.
+6. OrbitControls-Drehen wird gesperrt; nur Mausrad-Zoom bleibt aktiv.
+7. Ein CSS-Overlay erscheint mit Achsenbeschriftungen.
+
+Beim Zurückwechseln zu 3D: alle Schritte rückgängig, gespeicherte Position wiederhergestellt.
+
+---
+
+### Änderungen je Datei
+
+| Datei | Art | Beschreibung |
+|-------|-----|--------------|
+| `useWaveAnimation.ts` | Erweiterung | Neuer `viewMode`-Prop (`"3d"` / `"2d"`); OrthoCam einmalig beim Setup erstellt; `useEffect` reagiert auf Moduswechsel: tauscht aktive Kamera, sperrt OrbitControls-Rotation, blendet Z-Achse und Schnittebene aus/ein |
+| `TopDownOverlay.tsx` | Neu | Absolut positioniertes CSS-Div über dem Canvas; zeigt X/Y-Beschriftungen und ±5-m-Grenzen; nur sichtbar wenn `is2DView === true` |
+| `WaveVisualization.tsx` | Erweiterung | Neuer `is2DView`-State; rendert `TopDownOverlay` über Canvas; leitet State an Hook und ControlBar weiter |
+| `ControlBar.tsx` | Erweiterung | Neue Props `is2DView`, `onToggleViewMode`; neuer Toggle-Button "3D / 2D" mit Layers-Icon |
+
+---
+
+### Technische Entscheidungen (WARUM)
+
+**1. Gleiche Three.js-Szene — nur Kameratausch**
+Die gesamte Geometrie, der Shader und alle Quell-Marker müssen nicht neu aufgebaut werden. Das verhindert jedes Flackern und erfüllt das < 200 ms-Ziel der Spezifikation. Es gibt auch keine FPS-Einbrüche, weil die GPU-Last unverändert bleibt.
+
+**2. OrthographicCamera statt Kameraposition-Hack**
+Eine orthografische Kamera projiziert ohne Tiefenverzerrung — Objekte erscheinen in der richtigen Größe unabhängig von ihrer Entfernung. Das ist pädagogisch korrekt für eine Farbkarten-Ansicht: Interferenzmuster sollen nicht perspektivisch verzerrt sein.
+
+**3. CSS-Overlay statt Three.js-Sprites für 2D-Labels**
+Die bestehenden Achsenbeschriftungen (X, Y, Z) sind bereits als Three.js-Sprites in der Szene. Für die 2D-Rand-Beschriftungen ist ein CSS-Overlay einfacher zu positionieren, responsiver und braucht keine GPU-Sprites für Text. Es wird einfach über den Canvas gelegt und ist damit unabhängig von der Kamera.
+
+**4. Schnittebene ausblenden (nicht deaktivieren) im 2D-Modus**
+Das `CrossSectionPanel` (2D-Diagramm unter dem Canvas) bleibt aktiv und synchron — das ist pädagogisch wertvoll. Nur die halbtransparente 3D-Schnittebene im Canvas wird ausgeblendet, weil sie in Draufsicht senkrecht zur Sichtlinie wäre und nichts zeigen würde.
+
+**5. 3D-Kameraposition speichern, nicht zurücksetzen**
+Würde der Wechsel zu 2D die 3D-Kamera auf den Standardwert zurücksetzen, wäre das für Lehrkräfte frustrierend (manuell gewählter Blickwinkel verloren). Das explizite Speichern und Wiederherstellen entspricht dem Grenzfall in der Spezifikation.
+
+---
+
+### Abhängigkeiten / neue Pakete
+Keine — alle benötigten Elemente sind bereits vorhanden:
+- `src/components/ui/button.tsx` ✓
+- `src/components/ui/tooltip.tsx` ✓
+- Lucide-Icon `Layers` ist in `lucide-react` enthalten ✓
 
 ## QA-Testergebnisse
 _Wird von /qa hinzugefügt_

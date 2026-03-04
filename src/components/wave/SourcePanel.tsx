@@ -22,7 +22,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ChevronsLeft, ChevronsRight, RotateCcw, AlertTriangle } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, RotateCcw, AlertTriangle, Info } from "lucide-react";
+import { SOURCE_TYPE_EXPLANATIONS } from "@/lib/physics-explanations";
 import {
   SOURCE_TYPES,
   SOURCE_TYPE_LABELS,
@@ -45,12 +46,15 @@ interface SourcePanelProps {
   sourceHook: UseWaveSourcesReturn;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Lernmodus aktiv? Zeigt zusaetzliche Info-Icons (PROJ-13) */
+  isLearnMode?: boolean;
 }
 
 export function SourcePanel({
   sourceHook,
   isOpen,
   onOpenChange,
+  isLearnMode,
 }: SourcePanelProps) {
   const {
     config,
@@ -132,6 +136,16 @@ export function SourcePanel({
               <p className="text-xs text-muted-foreground">
                 {SOURCE_DESCRIPTIONS[config.type]}
               </p>
+
+              {/* Im Lernmodus: zusaetzliche Physik-Erklaerung */}
+              {isLearnMode && (
+                <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50/50 px-2.5 py-1.5 mt-1">
+                  <Info className="h-3.5 w-3.5 text-blue-600 mt-0.5 shrink-0" />
+                  <p className="text-xs text-blue-800">
+                    {SOURCE_TYPE_EXPLANATIONS[config.type]?.tooltip}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Quellenanzahl */}

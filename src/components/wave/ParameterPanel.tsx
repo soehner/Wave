@@ -13,11 +13,19 @@ import type { UseWaveParamsReturn } from "@/hooks/useWaveParams";
 import { ParameterControl } from "./ParameterControl";
 import { FormulaDisplay } from "./FormulaDisplay";
 
+import type { WaveParams } from "@/lib/wave-params";
+
 interface ParameterPanelProps {
   waveParamsHook: UseWaveParamsReturn;
   sourceCount: number;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Welcher Parameter gerade hervorgehoben ist (Pulse-Animation, PROJ-13) */
+  highlightedParam?: keyof WaveParams | null;
+  /** Callback wenn ein Formel-Symbol geklickt wird (PROJ-13) */
+  onFormulaSymbolClick?: (paramKey: keyof WaveParams) => void;
+  /** Callback fuer Lernmodus-Toast bei Slider-Aenderung (PROJ-13) */
+  onLearnSliderChange?: (key: keyof WaveParams) => void;
 }
 
 /**
@@ -34,6 +42,9 @@ export function ParameterPanel({
   sourceCount,
   isOpen,
   onOpenChange,
+  highlightedParam,
+  onFormulaSymbolClick,
+  onLearnSliderChange,
 }: ParameterPanelProps) {
   const {
     params,
@@ -131,6 +142,8 @@ export function ParameterPanel({
                   validationError={validationErrors[config.key]}
                   onSliderChange={setSliderPercent}
                   onBaseValueChange={setBaseValue}
+                  isHighlighted={highlightedParam === config.key}
+                  onLearnSliderChange={onLearnSliderChange}
                 />
               ))}
             </div>
@@ -166,7 +179,7 @@ export function ParameterPanel({
             </div>
 
             {/* Formelanzeige */}
-            <FormulaDisplay params={params} derived={derived} />
+            <FormulaDisplay params={params} derived={derived} onSymbolClick={onFormulaSymbolClick} />
           </div>
         </aside>
       </CollapsibleContent>

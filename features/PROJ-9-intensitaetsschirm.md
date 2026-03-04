@@ -1,6 +1,6 @@
 # PROJ-9: Intensitätsschirm
 
-## Status: Geplant
+## Status: In Review
 **Erstellt:** 2026-03-04
 **Zuletzt aktualisiert:** 2026-03-04
 
@@ -51,7 +51,76 @@
 <!-- Folgende Abschnitte werden von nachfolgenden Skills hinzugefügt -->
 
 ## Technisches Design (Solution Architect)
-_Wird von /architecture hinzugefügt_
+
+### Komponentenstruktur
+
+```
+WaveVisualization (bestehend)
++-- ControlBar (bestehend — Toggle "Schirm" hinzufügen)
++-- IntensityScreenPanel (NEU — neben dem 3D-Canvas)
+|   +-- Header mit Ein/Aus-Status + "instantan/zeitgemittelt"-Toggle
+|   +-- ScreenPositionSlider (x-Position: -4.5 m bis +4.5 m)
+|   +-- IntensityChart (NEU — Recharts AreaChart)
+|   |   +-- Linienprofil mit Intensitätskurve I(y)
+|   |   +-- Maxima-Markierungen (gestrichelte Linien + y-Koordinaten)
+|   +-- InfoHinweis (optional: "Mindestens 2 Quellen für Interferenz")
++-- WaveCanvas (bestehend — Schirmlinie als Three.js Line überlagern)
++-- TopDownOverlay (PROJ-7 — Schirmlinie als vertikale Linie übergeben)
+```
+
+### Datenmodell
+
+```
+Schirm-Konfiguration (State in WaveVisualization):
+- isScreenActive: true/false
+- screenX: Zahl (-4.5 bis +4.5) — Position auf X-Achse in Metern
+- intensityMode: "instantaneous" | "timeAveraged"
+
+Schirm-Datenpunkte (berechnet pro Frame in useIntensityScreen):
+- Jeder Punkt hat:
+  • y: Position auf dem Schirm (in Metern, ~200 Stützstellen)
+  • intensity: normierte Intensität (0 bis 1)
+  • isMaximum: true/false (für Beschriftungen)
+
+Zeitgemittelter Puffer:
+- Ringpuffer der letzten 30 Frames
+- I_avg(y) = Durchschnitt von z²(y,t) über alle Puffer-Frames
+- Normierung auf lokales Maximum (korrekt bei Dämpfung > 0)
+```
+
+### Neue Dateien
+
+```
+src/hooks/useIntensityScreen.ts          — Berechnungslogik + State-Management
+src/components/wave/IntensityScreenPanel.tsx  — UI-Panel (Slider + Toggle)
+src/components/wave/IntensityChart.tsx        — Recharts AreaChart-Diagramm
+```
+
+### Änderungen an bestehenden Dateien
+
+```
+src/lib/wave-math.ts                     — calculateIntensityProfile() hinzufügen
+src/components/wave/ControlBar.tsx       — Toggle-Button "Schirm" ergänzen
+src/components/wave/WaveVisualization.tsx — Hook + Panel + Schirmlinie im Canvas einbinden
+```
+
+### Technische Entscheidungen
+
+| Entscheidung | Wahl | Begründung |
+|---|---|---|
+| **Diagramm-Bibliothek** | Recharts `AreaChart` via `shadcn/ui chart.tsx` | Bereits vorhanden — kein neues Paket nötig, konsistent mit CrossSectionChart |
+| **Berechnung** | CPU-seitig in `wave-math.ts` (~200 Punkte) | GPU-Shader liefert nur 3D-Rendering; Intensitätsprofil braucht gezielte Linienabfrage |
+| **Hook-Muster** | `useIntensityScreen` (analog zu `useCrossSection`) | Konsistente Architektur, wiederverwendbares Muster |
+| **Schirmlinie** | Three.js `Line`-Objekt im WaveCanvas | Minimaler Eingriff, analog zur bestehenden Schnittebenen-Linie |
+| **Zeitgemittelung** | Ringpuffer (30 Frames) im Hook | Stationäres Interferenzmuster trotz laufender Animation; ≤ 3 ms Budget |
+
+### Keine neuen Abhängigkeiten
+
+Recharts ist bereits über `shadcn/ui chart.tsx` eingebunden — **0 neue npm-Pakete** erforderlich.
+
+### Integration PROJ-7 (Top-Down-Ansicht)
+
+`TopDownOverlay` erhält optional `screenX`-Prop und zeichnet eine vertikale Linie im 2D-Modus.
 
 ## QA-Testergebnisse
 _Wird von /qa hinzugefügt_

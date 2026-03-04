@@ -1,6 +1,6 @@
 # PROJ-13: In-App Physik-Erklärungen
 
-## Status: Geplant
+## Status: In Review
 **Erstellt:** 2026-03-04
 **Zuletzt aktualisiert:** 2026-03-04
 
@@ -66,7 +66,86 @@
 <!-- Folgende Abschnitte werden von nachfolgenden Skills hinzugefügt -->
 
 ## Technisches Design (Solution Architect)
-_Wird von /architecture hinzugefügt_
+
+### Überblick
+Rein clientseitiges Feature — kein Backend, keine Datenbank. Alle Physik-Texte sind statisch im Code hinterlegt. Das Feature erweitert drei bestehende Komponenten und fügt einen neuen Hook sowie eine Datenkonstanten-Datei hinzu.
+
+### Komponentenstruktur
+
+```
+Bestehende Komponenten (erweitert):
++-- ParameterControl.tsx          ← ⓘ-Icon neben jedem Parameter-Label
+|   +-- PhysicsInfoIcon           ← neue Hilfskomponente (intern)
+|       +-- shadcn Tooltip        ← bereits installiert
++-- FormulaDisplay.tsx            ← Formel-Symbole werden klickbar
+|   +-- Klickbare Symbole (A, k, ω, φ, d)
+|       +-- shadcn Tooltip        ← zeigt aktuellen Wert + Erklärung
++-- ControlBar.tsx                ← neuer "Lernmodus"-Toggle
++-- SourcePanel.tsx               ← ⓘ-Icon bei Quellentypen (im Lernmodus)
+
+Neue Dateien:
++-- src/lib/physics-explanations.ts   ← statische Texte (keine Logik)
++-- src/hooks/useLearnMode.ts         ← Toggle-Zustand + Toast-Drosselung
+```
+
+### Datenmodell
+
+**Physik-Erklärungen** (statisch, kein Server):
+```
+Für jeden Parameter (A, f, λ, φ, d):
+  - Kurztext für Tooltip (max. 200 Zeichen)
+  - Formelzeichen + Einheit
+  - Beispieltext ("Erhöhe A → ...")
+
+Für jeden Quellentyp (Punkt, Kreis, Balken, Dreieck):
+  - Kurzbeschreibung
+
+Für Lernmodus-Toasts:
+  - Effekt-Text pro Parameter beim Slider-Bewegen
+  - Wird beim Preset-Wechsel unterdrückt
+```
+
+**Lernmodus-Zustand** (im Hook, React State):
+```
+isLearnMode: boolean          ← Toggle an/aus
+lastToastTime: number         ← Timestamp für 500ms-Drosselung
+activeTooltip: string | null  ← Welcher Tooltip gerade offen ist
+```
+
+### Technische Entscheidungen
+
+| Entscheidung | Begründung |
+|---|---|
+| Statische Texte in TypeScript-Datei | Kein CMS nötig, einfach wartbar, typsicher |
+| shadcn `Tooltip` (bereits installiert) | Konsistent mit bestehendem `ParameterControl`, kein neues Paket |
+| shadcn `Sonner` (neu installieren) | Standard für Toast-Nachrichten in Next.js + shadcn-Stack |
+| Kein globaler State (nur Hook) | Lernmodus ist Session-lokal, kein Persistenzbedarf (PROJ-11 noch nicht vorhanden) |
+| Pulse-Animation via Tailwind | Keine externe Animationsbibliothek nötig (`animate-pulse` reicht) |
+| Tooltip: max. 1 gleichzeitig | Vereinfacht UX, shadcn schließt automatisch bei Klick woanders |
+
+### Abhängigkeiten (zu installieren)
+
+| Paket | Zweck |
+|---|---|
+| `sonner` (via `npx shadcn@latest add sonner`) | Toast-Meldungen im Lernmodus |
+
+### Änderungen an bestehenden Dateien
+
+| Datei | Art der Änderung |
+|---|---|
+| `ParameterControl.tsx` | ⓘ-Icon neben Label; Prop `onSliderChange` Callback für Lernmodus-Toast |
+| `FormulaDisplay.tsx` | Symbole werden mit `onClick` und Tooltip versehen; neues Prop `onSymbolClick` |
+| `ControlBar.tsx` | Neuer "Lernmodus" Toggle-Button mit Switch-Icon |
+| `ParameterPanel.tsx` | Nimmt `highlightedParam` entgegen, setzt kurze Pulse-Klasse |
+| `SourcePanel.tsx` | Im Lernmodus ⓘ-Icon + Text bei Quellentyp-Buttons |
+| `src/app/page.tsx` | `useLearnMode`-Hook einbinden, Props weitergeben |
+
+### Neue Dateien
+
+| Datei | Inhalt |
+|---|---|
+| `src/lib/physics-explanations.ts` | Alle statischen Erklärungstexte (Objekt/Map) |
+| `src/hooks/useLearnMode.ts` | Toggle-State, Toast-Drosselung, Highlight-Logik |
 
 ## QA-Testergebnisse
 _Wird von /qa hinzugefügt_

@@ -9,14 +9,14 @@
 | PROJ-3 | Wellenquellen-Konfiguration | Deployed | 2026-03-03 |
 | PROJ-4 | Schnittebenen-Analyse | Deployed | 2026-03-03 |
 | PROJ-5 | Vorgefertigte Szenarien / Presets | Deployed | 2026-03-04 |
-| PROJ-6 | Zeitsteuerung (Zeitlupe / Zeitraffer) | Geplant | 2026-03-04 |
-| PROJ-7 | Top-Down-2D-Ansicht (Draufsicht) | Geplant | 2026-03-04 |
-| PROJ-8 | Punkt-Sonde (z vs. t Zeitverlauf) | Geplant | 2026-03-04 |
-| PROJ-9 | Intensitätsschirm | Geplant | 2026-03-04 |
-| PROJ-10 | Visuelle Annotationen | Geplant | 2026-03-04 |
+| PROJ-6 | Zeitsteuerung (Zeitlupe / Zeitraffer) | In Arbeit | 2026-03-04 |
+| PROJ-7 | Top-Down-2D-Ansicht (Draufsicht) | In Review | 2026-03-04 |
+| PROJ-8 | Punkt-Sonde (z vs. t Zeitverlauf) | In Review | 2026-03-04 |
+| PROJ-9 | Intensitätsschirm | In Review | 2026-03-04 |
+| PROJ-10 | Visuelle Annotationen | In Review | 2026-03-04 |
 | PROJ-11 | Screenshot & URL-Sharing | Geplant | 2026-03-04 |
 | PROJ-12 | Farbschema-Optionen | Geplant | 2026-03-04 |
-| PROJ-13 | In-App Physik-Erklärungen | Geplant | 2026-03-04 |
+| PROJ-13 | In-App Physik-Erklärungen | In Review | 2026-03-04 |
 | PROJ-14 | Vergleichsmodus (Split-Screen) | Geplant | 2026-03-04 |
 | PROJ-15 | Reflexion an losem und festem Ende | Geplant | 2026-03-04 |
 

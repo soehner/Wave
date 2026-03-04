@@ -46,7 +46,85 @@
 <!-- Folgende Abschnitte werden von nachfolgenden Skills hinzugefügt -->
 
 ## Technisches Design (Solution Architect)
-_Wird von /architecture hinzugefügt_
+
+### Übersicht
+Reine Frontend-Erweiterung — kein Backend, kein LocalStorage, kein neues npm-Paket nötig.
+Alle bestehenden shadcn/ui-Komponenten (Slider, Button, Tooltip) sind bereits installiert.
+
+---
+
+### Komponentenstruktur (visueller Baum)
+
+```
+WaveVisualization (State-Koordinator)
++-- SourcePanel (links, unverändert)
++-- 3D-Canvas (Mitte, unverändert)
++-- ParameterPanel (rechts, unverändert)
++-- CrossSectionPanel (optional, unverändert)
++-- ControlBar (unten)
+    +-- [bestehend] Play/Pause, Neu starten, Kamera, Presets, Schnittebene
+    +-- [NEU] SpeedControl (neue Komponente src/components/wave/SpeedControl.tsx)
+    |   +-- "⏮" Button  (deaktiviert bei laufender Animation)
+    |   +-- Geschwindigkeits-Slider (6 diskrete Stufen: 0.1×, 0.25×, 0.5×, 1×, 2×, 5×)
+    |   +-- Geschwindigkeitsanzeige-Text ("1×")
+    |   +-- "⏭" Button  (deaktiviert bei laufender Animation)
+    +-- [NEU] Zeitanzeige ("t = 2.34 s")  — neben bestehender FPS-Anzeige
+    +-- [bestehend] FPS-Anzeige
+```
+
+---
+
+### Datenmodell (Klartext)
+
+```
+Neuer Zustand in WaveVisualization:
+  speedMultiplier   Zahl aus {0.1, 0.25, 0.5, 1.0, 2.0, 5.0}  — Standard: 1.0
+  currentTime       Kommazahl in Sekunden (0 bis 9999.99)       — nur für Anzeige
+
+Neue interne Referenzen in useWaveAnimation (keine React-Renders):
+  speedMultiplierRef  Spiegelt speedMultiplier; wird im Animationsloop direkt gelesen
+  (timeRef existiert bereits, wird jetzt mit Multiplikator erhöht)
+
+Kein Backend. Kein LocalStorage. Zustand lebt nur für die Dauer der Browser-Session.
+```
+
+---
+
+### Änderungen je Datei
+
+| Datei | Art | Beschreibung |
+|-------|-----|--------------|
+| `useWaveAnimation.ts` | Erweiterung | Neuer Eingangsparameter `speedMultiplier`; Animationsloop multipliziert `dt` mit Faktor; neuer `onTimeUpdate`-Callback (~10 Hz, analog zu `onFpsUpdate`); neue Rückgabe `stepFrame(direction)` |
+| `ControlBar.tsx` | Erweiterung | Nimmt neue Props entgegen: `speedMultiplier`, `onSpeedChange`, `currentTime`, `onStepFrame`; bindet `SpeedControl` ein; zeigt Zeitanzeige an |
+| `SpeedControl.tsx` | Neu | Eigenständige Komponente: Slider (shadcn), zwei Step-Buttons (shadcn), Textanzeige, Doppelklick-Reset, Tooltip für Aliasing-Warnung |
+| `WaveVisualization.tsx` | Erweiterung | Neuer State `speedMultiplier` + `currentTime`; verdrahtet neue Callbacks zwischen Hook und ControlBar |
+
+---
+
+### Technische Entscheidungen (WARUM)
+
+**1. Geschwindigkeitsmultiplikator über Ref statt State im Hook**
+Der Animationsloop läuft 60× pro Sekunde direkt im Browser. Würde er auf React-State warten, entstünden unnötige Verzögerungen. Ein Ref wird sofort aktualisiert — Geschwindigkeitsänderungen wirken innerhalb des nächsten Frames (< 17 ms).
+
+**2. Zeitanzeige über Callback, nicht über Ref-Polling**
+Dieselbe Strategie wie die bestehende FPS-Anzeige (`onFpsUpdate`): Der Hook ruft `onTimeUpdate` ca. 10× pro Sekunde auf. Das reicht für eine flüssig wirkende Anzeige, ohne die UI mit 60 Render-Aufrufen pro Sekunde zu überlasten.
+
+**3. Diskrete Geschwindigkeitsstufen (kein freier Slider)**
+Die Spezifikation nennt konkrete pädagogisch sinnvolle Stufen (0.1×, 0.25×, 0.5×, 1×, 2×, 5×). Ein diskreter Slider verhindert ungewollte Zwischenwerte und macht Doppelklick-Reset auf 1× intuitiv (Stufe 3 von 6).
+
+**4. Einzelbild-Buttons deaktiviert bei Play (nicht versteckt)**
+Sichtbar-aber-ausgegraut kommuniziert dem Benutzer, dass die Funktion existiert — er muss zuerst pausieren. Unsichtbare Buttons würden die Funktion verstecken.
+
+**5. Keine neuen npm-Pakete**
+Slider, Button, Tooltip sind bereits in `src/components/ui/` installiert. Die Implementierung benötigt keine zusätzlichen Abhängigkeiten.
+
+---
+
+### Abhängigkeiten / neue Pakete
+Keine — alle benötigten shadcn/ui-Komponenten sind bereits vorhanden:
+- `src/components/ui/slider.tsx` ✓
+- `src/components/ui/button.tsx` ✓
+- `src/components/ui/tooltip.tsx` ✓
 
 ## QA-Testergebnisse
 _Wird von /qa hinzugefügt_

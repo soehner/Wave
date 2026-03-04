@@ -125,6 +125,162 @@ export function computeWaveZ(
 /** Feld-Grenzen (identisch zu PLANE_SIZE in useWaveAnimation) */
 export const FIELD_HALF_SIZE = 5;
 
+// --- Intensitaetsschirm (PROJ-9) ---
+
+/** Datenpunkt im Intensitaetsschirm-Diagramm */
+export interface IntensityPoint {
+  /** Y-Position auf dem Schirm in Metern */
+  y: number;
+  /** Normierte Intensitaet (0 bis 1) */
+  intensity: number;
+  /** Ob dieser Punkt ein lokales Maximum ist */
+  isMaximum: boolean;
+}
+
+/**
+ * Berechnet das Intensitaetsprofil entlang einer vertikalen Schirmlinie
+ * bei einer gegebenen X-Position.
+ *
+ * @param screenX    X-Position des Schirms in Metern
+ * @param t          Aktuelle Zeit in Sekunden
+ * @param uniforms   Wellenparameter-Arrays
+ * @param sources    Quelleninformationen
+ * @param numPoints  Anzahl der Stuetzstellen (Default: 200)
+ * @returns          Array von Intensitaetspunkten mit Maxima-Markierungen
+ */
+export function calculateIntensityProfile(
+  screenX: number,
+  t: number,
+  uniforms: WaveUniformArrays,
+  sources: SourceUniforms,
+  numPoints: number = 200
+): IntensityPoint[] {
+  const step = (2 * FIELD_HALF_SIZE) / (numPoints - 1);
+
+  // 1. z-Werte berechnen und instantane Intensitaet: I = z^2
+  const rawIntensities: number[] = [];
+  const yPositions: number[] = [];
+
+  for (let i = 0; i < numPoints; i++) {
+    const y = -FIELD_HALF_SIZE + i * step;
+    const z = computeWaveZ(screenX, y, t, uniforms, sources);
+    yPositions.push(y);
+    rawIntensities.push(z * z);
+  }
+
+  // 2. Normierung auf Maximum
+  let maxIntensity = 0;
+  for (const val of rawIntensities) {
+    if (val > maxIntensity) maxIntensity = val;
+  }
+  const normFactor = maxIntensity > 1e-10 ? 1 / maxIntensity : 0;
+
+  // 3. Normierte Werte und Maxima bestimmen
+  const points: IntensityPoint[] = [];
+  for (let i = 0; i < numPoints; i++) {
+    const intensity = rawIntensities[i] * normFactor;
+
+    // Lokales Maximum: hoeher als beide Nachbarn und ueber Schwellwert
+    let isMaximum = false;
+    if (i > 0 && i < numPoints - 1 && intensity > 0.1) {
+      const prev = rawIntensities[i - 1] * normFactor;
+      const next = rawIntensities[i + 1] * normFactor;
+      if (intensity > prev && intensity > next) {
+        isMaximum = true;
+      }
+    }
+
+    points.push({
+      y: yPositions[i],
+      intensity,
+      isMaximum,
+    });
+  }
+
+  // 4. Maxima aufsduennen: nur echte Hauptmaxima behalten (Mindestabstand 5 Punkte)
+  const maxima = points.filter((p) => p.isMaximum);
+  if (maxima.length > 20) {
+    // Zu viele Maxima -> nur die staerksten behalten
+    const sorted = [...maxima].sort((a, b) => b.intensity - a.intensity);
+    const topMaxima = new Set(sorted.slice(0, 15).map((p) => p.y));
+    for (const point of points) {
+      if (point.isMaximum && !topMaxima.has(point.y)) {
+        point.isMaximum = false;
+      }
+    }
+  }
+
+  return points;
+}
+
+/**
+ * Berechnet zeitgemittelte Intensitaet aus einem Ringpuffer von z^2-Werten.
+ *
+ * @param buffer     Ringpuffer: Array von Arrays (pro Frame je numPoints z^2-Werte)
+ * @param numPoints  Anzahl der Stuetzstellen
+ * @param screenX    Aktuelle Schirmposition (fuer y-Koordinaten)
+ * @returns          Array von Intensitaetspunkten (zeitgemittelt)
+ */
+export function calculateTimeAveragedIntensity(
+  buffer: number[][],
+  numPoints: number,
+  screenX: number
+): IntensityPoint[] {
+  if (buffer.length === 0) return [];
+
+  const step = (2 * FIELD_HALF_SIZE) / (numPoints - 1);
+  const avgIntensities: number[] = new Array(numPoints).fill(0);
+
+  // Durchschnitt ueber alle Frames im Puffer
+  for (const frame of buffer) {
+    for (let i = 0; i < numPoints; i++) {
+      avgIntensities[i] += (frame[i] ?? 0);
+    }
+  }
+  const frameCount = buffer.length;
+  for (let i = 0; i < numPoints; i++) {
+    avgIntensities[i] /= frameCount;
+  }
+
+  // Normierung auf Maximum
+  let maxVal = 0;
+  for (const val of avgIntensities) {
+    if (val > maxVal) maxVal = val;
+  }
+  const normFactor = maxVal > 1e-10 ? 1 / maxVal : 0;
+
+  const points: IntensityPoint[] = [];
+  for (let i = 0; i < numPoints; i++) {
+    const y = -FIELD_HALF_SIZE + i * step;
+    const intensity = avgIntensities[i] * normFactor;
+
+    let isMaximum = false;
+    if (i > 0 && i < numPoints - 1 && intensity > 0.1) {
+      const prev = avgIntensities[i - 1] * normFactor;
+      const next = avgIntensities[i + 1] * normFactor;
+      if (intensity > prev && intensity > next) {
+        isMaximum = true;
+      }
+    }
+
+    points.push({ y, intensity, isMaximum });
+  }
+
+  // Maxima aufsduennen
+  const maxima = points.filter((p) => p.isMaximum);
+  if (maxima.length > 20) {
+    const sorted = [...maxima].sort((a, b) => b.intensity - a.intensity);
+    const topMaxima = new Set(sorted.slice(0, 15).map((p) => p.y));
+    for (const point of points) {
+      if (point.isMaximum && !topMaxima.has(point.y)) {
+        point.isMaximum = false;
+      }
+    }
+  }
+
+  return points;
+}
+
 /** Datenpunkt im Schnittdiagramm */
 export interface CrossSectionPoint {
   coord: number;

@@ -1,6 +1,6 @@
 # PROJ-10: Visuelle Annotationen
 
-## Status: Geplant
+## Status: In Review
 **Erstellt:** 2026-03-04
 **Zuletzt aktualisiert:** 2026-03-04
 
@@ -47,7 +47,102 @@
 <!-- Folgende Abschnitte werden von nachfolgenden Skills hinzugefügt -->
 
 ## Technisches Design (Solution Architect)
-_Wird von /architecture hinzugefügt_
+
+### Überblick
+
+PROJ-10 fügt eine nicht-destruktive Overlay-Schicht über die bestehende Three.js-Szene hinzu. Vier unabhängige Annotations-Typen können einzeln aktiviert werden. Das System ist bewusst rein visuell — es verändert weder Shader-Uniforms noch die Wellenberechnung.
+
+---
+
+### Komponentenstruktur
+
+```
+WaveVisualization (Hauptkoordinator)
+├── useAnnotations (neuer Hook) — verwaltet 4 Boolean-Flags + Hilfsdaten
+├── AnnotationPanel (neue Komponente) — Toggle-UI im Seitenbereich
+│   ├── Toggle: Wellenlänge λ
+│   ├── Toggle: Knotenlinien
+│   ├── Toggle: Wellenfronten
+│   └── Toggle: Gangunterschied
+└── useWaveAnimation (bestehend, erweitert)
+    └── annotationGroupRef — neue Three.js-Gruppe im Szenengraph
+        ├── λ-Doppelpfeil (Line + Sprite-Label)
+        ├── Knotenlinien-Mesh (transparentes Overlay-Netz)
+        ├── Wellenfront-Kreise (animierte EllipseCurves)
+        └── Gangunterschied-Linien (Line + Sprite-Label)
+```
+
+Für die **Top-Down-2D-Ansicht** (PROJ-7) werden dieselben Annotationen als Canvas-Zeichnungen auf dem bestehenden `TopDownOverlay` ergänzt — kein separates System nötig.
+
+---
+
+### Datenmodell
+
+```
+Annotations-Zustand (React State in WaveVisualization):
+  showLambdaArrow:    boolean  — λ-Doppelpfeil ein/aus
+  showNodeLines:      boolean  — Knotenlinien ein/aus
+  showWavefronts:     boolean  — Wellenfront-Kreise ein/aus
+  showPathDifference: boolean  — Gangunterschied-Linien ein/aus
+
+Berechnet aus bestehenden Werten (keine neue Datenspeicherung):
+  λ (Wellenlänge) ← aus waveParams
+  Quellenanzahl  ← aus waveSources
+  Quellenposition← aus waveSources
+  Sondenpunkt    ← aus useProbeData (PROJ-8), optional
+  Animationszeit ← aus useWaveAnimation (für Wellenfront-Bewegung)
+```
+
+Kein Backend, keine lokale Speicherung — der Zustand ist sessionbezogen.
+
+---
+
+### Technische Entscheidungen
+
+| Entscheidung | Begründung |
+|---|---|
+| Three.js-Gruppe `annotationGroup` statt eigenem Canvas | Passt sich automatisch zur Kamera mit (3D-Perspektive bleibt erhalten); kein zweiter Render-Pass nötig |
+| Canvas-Erweiterung in `TopDownOverlay` für 2D | Bestehendes `<canvas>`-Element wiederverwendet; kein neues DOM-Element |
+| React State für Boolean-Flags | Minimal, kein globaler Store benötigt; Annotationen beeinflussen keine Physik |
+| Sprite-Labels für Beschriftungen | Gleiche Technik wie bestehende Achsenbeschriftungen; bleibt immer lesbar, unabhängig von Kamerawinkel |
+| Kein eigener Shader | Annotations-Geometrie nutzt Three.js `LineBasicMaterial` — kein GPU-Overhead, kein Shader-Konflikt mit bestehendem Wellen-Shader |
+
+---
+
+### Neue Dateien
+
+```
+src/
+  hooks/
+    useAnnotations.ts          — Boolean-Flags + Berechnungslogik (Knotenlinien-Positionen, λ-Pfeil-Koordinaten)
+  components/wave/
+    AnnotationPanel.tsx        — Toggle-UI (4 Switches + Hinweis-Texte für Grenzfälle)
+```
+
+**Erweiterte Dateien:**
+
+```
+useWaveAnimation.ts    — annotationsConfig-Parameter, annotationGroup in Szenengraph
+WaveVisualization.tsx  — useAnnotations einbinden, Props weiterleiten
+TopDownOverlay.tsx     — Canvas-Zeichenroutinen für Annotationen in 2D-Ansicht
+ControlBar.tsx         — kein direkter Eingriff (Annotations-Panel liegt im Seitenbereich)
+```
+
+---
+
+### Abhängigkeiten
+
+Keine neuen npm-Pakete erforderlich. Alle benötigten Three.js-Klassen (`Line`, `LineSegments`, `EllipseCurve`, `Sprite`, `SpriteMaterial`) sind bereits im bestehenden `three`-Paket enthalten und werden teilweise schon im Projekt verwendet.
+
+---
+
+### Performance-Budget
+
+- λ-Pfeil: ~10 Vertices (vernachlässigbar)
+- Knotenlinien: berechnet auf CPU, einmal pro Parameteränderung (nicht pro Frame)
+- Wellenfront-Kreise: max. 2 Quellen × 10 Kreise = ~2000 Vertices; Update pro Frame, aber einfache Translation (keine Neuberechnung der Geometrie)
+- Gangunterschied: 2 Linien + 2 Sprites — vernachlässigbar
+- **Gesamt-Budget deutlich unter dem Ziel von 1 ms/Frame**
 
 ## QA-Testergebnisse
 _Wird von /qa hinzugefügt_

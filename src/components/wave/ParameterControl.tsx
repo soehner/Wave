@@ -10,8 +10,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 import type { ParameterConfig } from "@/lib/wave-params";
 import type { ParameterSliderState } from "@/hooks/useWaveParams";
+import { PARAMETER_EXPLANATIONS } from "@/lib/physics-explanations";
 
 interface ParameterControlProps {
   config: ParameterConfig;
@@ -20,6 +22,10 @@ interface ParameterControlProps {
   validationError?: string;
   onSliderChange: (key: ParameterConfig["key"], percent: number) => void;
   onBaseValueChange: (key: ParameterConfig["key"], value: number) => void;
+  /** Wenn true, wird dieser Parameter mit Pulse-Animation hervorgehoben */
+  isHighlighted?: boolean;
+  /** Callback fuer Lernmodus-Toast bei Slider-Aenderung */
+  onLearnSliderChange?: (key: ParameterConfig["key"]) => void;
 }
 
 /**
@@ -36,6 +42,8 @@ export function ParameterControl({
   validationError,
   onSliderChange,
   onBaseValueChange,
+  isHighlighted,
+  onLearnSliderChange,
 }: ParameterControlProps) {
   // Lokaler Input-Zustand: nur waehrend Fokus aktiv
   const [editingText, setEditingText] = useState<string | null>(null);
@@ -54,8 +62,9 @@ export function ParameterControl({
       if (now - throttleRef.current < 16) return;
       throttleRef.current = now;
       onSliderChange(config.key, values[0]);
+      onLearnSliderChange?.(config.key);
     },
-    [config.key, onSliderChange]
+    [config.key, onSliderChange, onLearnSliderChange]
   );
 
   const handleInputChange = useCallback(
@@ -94,16 +103,40 @@ export function ParameterControl({
   const inputId = `param-${config.key}-input`;
   const sliderId = `param-${config.key}-slider`;
 
+  const explanation = PARAMETER_EXPLANATIONS[config.key];
+
   return (
-    <div className="space-y-2">
-      {/* Label-Zeile: Name, Symbol, Einheit und effektiver Wert */}
+    <div className={`space-y-2 rounded-md px-1 py-0.5 transition-all duration-300 ${isHighlighted ? "ring-2 ring-blue-400 bg-blue-50/50 animate-pulse" : ""}`}>
+      {/* Label-Zeile: Name, Symbol, Einheit, Info-Icon und effektiver Wert */}
       <div className="flex items-center justify-between">
-        <Label htmlFor={inputId} id={labelId} className="text-sm font-medium">
-          {config.label}{" "}
-          <span className="font-normal text-muted-foreground">
-            {config.symbol} [{config.unit}]
-          </span>
-        </Label>
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor={inputId} id={labelId} className="text-sm font-medium">
+            {config.label}{" "}
+            <span className="font-normal text-muted-foreground">
+              {config.symbol} [{config.unit}]
+            </span>
+          </Label>
+          {/* Info-Icon mit Physik-Erklaerung */}
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors h-4 w-4"
+                  aria-label={`Info zu ${config.label}`}
+                >
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="max-w-[220px]">
+                <p className="text-xs leading-relaxed">{explanation.tooltip}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {explanation.symbol} [{explanation.unit}]
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
