@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import {
   type CrossSectionPoint,
+  type ReflectionParams,
   computeCrossSectionData,
 } from "@/lib/wave-math";
 import type { WaveUniformArrays } from "@/lib/wave-params";
@@ -23,6 +24,8 @@ export interface UseCrossSectionOptions {
   orientation: "x" | "y";
   /** Position der Schnittebene in Metern */
   position: number;
+  /** Reflexionsparameter (PROJ-15) */
+  reflection?: ReflectionParams;
 }
 
 export interface UseCrossSectionReturn {
@@ -45,6 +48,7 @@ export function useCrossSection({
   isActive,
   orientation,
   position,
+  reflection,
 }: UseCrossSectionOptions): UseCrossSectionReturn {
   const [rawChartData, setRawChartData] = useState<CrossSectionPoint[]>([]);
 
@@ -79,6 +83,11 @@ export function useCrossSection({
     isPlayingRef.current = isPlaying;
   }, [isPlaying]);
 
+  const reflectionRef = useRef(reflection);
+  useEffect(() => {
+    reflectionRef.current = reflection;
+  }, [reflection]);
+
   // Animation-Loop fuer Datenberechnung (~30 FPS)
   useEffect(() => {
     if (!isActive) return;
@@ -104,7 +113,9 @@ export function useCrossSection({
         positionRef.current,
         t,
         waveUniformsRef.current,
-        sourceUniformsRef.current
+        sourceUniformsRef.current,
+        200,
+        reflectionRef.current
       );
 
       setRawChartData(data);
@@ -130,12 +141,14 @@ export function useCrossSection({
         position,
         t,
         waveUniformArrays,
-        sourceUniforms
+        sourceUniforms,
+        200,
+        reflection
       );
       setRawChartData(data);
     });
     return () => cancelAnimationFrame(id);
-  }, [isActive, orientation, position, waveUniformArrays, sourceUniforms, timeRef]);
+  }, [isActive, orientation, position, waveUniformArrays, sourceUniforms, timeRef, reflection]);
 
   return {
     chartData,

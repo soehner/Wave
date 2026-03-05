@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   type IntensityPoint,
+  type ReflectionParams,
   calculateIntensityProfile,
   calculateTimeAveragedIntensity,
   computeWaveZ,
@@ -28,6 +29,8 @@ export interface UseIntensityScreenOptions {
   screenX: number;
   /** Modus: instantan oder zeitgemittelt */
   intensityMode: IntensityMode;
+  /** Reflexionsparameter (PROJ-15) */
+  reflection?: ReflectionParams;
 }
 
 export interface UseIntensityScreenReturn {
@@ -53,6 +56,7 @@ export function useIntensityScreen({
   isActive,
   screenX,
   intensityMode,
+  reflection,
 }: UseIntensityScreenOptions): UseIntensityScreenReturn {
   const [rawChartData, setRawChartData] = useState<IntensityPoint[]>([]);
 
@@ -78,6 +82,9 @@ export function useIntensityScreen({
   useEffect(() => { waveUniformsRef.current = waveUniformArrays; }, [waveUniformArrays]);
   useEffect(() => { sourceUniformsRef.current = sourceUniforms; }, [sourceUniforms]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+
+  const reflectionRef = useRef(reflection);
+  useEffect(() => { reflectionRef.current = reflection; }, [reflection]);
 
   // Ringpuffer leeren wenn Modus wechselt oder Schirm de-/aktiviert wird
   useEffect(() => {
@@ -109,7 +116,7 @@ export function useIntensityScreen({
 
       if (intensityModeRef.current === "instantaneous") {
         // Instantaner Modus: direkte Berechnung
-        const data = calculateIntensityProfile(sx, t, uniforms, sources, NUM_POINTS);
+        const data = calculateIntensityProfile(sx, t, uniforms, sources, NUM_POINTS, reflectionRef.current);
         setRawChartData(data);
       } else {
         // Zeitgemittelter Modus: z^2-Werte in Ringpuffer sammeln
@@ -117,7 +124,7 @@ export function useIntensityScreen({
         const frameData: number[] = [];
         for (let i = 0; i < NUM_POINTS; i++) {
           const y = -FIELD_HALF_SIZE + i * step;
-          const z = computeWaveZ(sx, y, t, uniforms, sources);
+          const z = computeWaveZ(sx, y, t, uniforms, sources, reflectionRef.current);
           frameData.push(z * z);
         }
 
@@ -151,7 +158,7 @@ export function useIntensityScreen({
     const id = requestAnimationFrame(() => {
       const t = timeRef.current ?? 0;
       if (intensityModeRef.current === "instantaneous") {
-        const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS);
+        const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS, reflection);
         setRawChartData(data);
       } else {
         // Bei Pause im zeitgemittelten Modus: zeige vorhandene Daten oder berechne instantan
@@ -159,13 +166,13 @@ export function useIntensityScreen({
           const data = calculateTimeAveragedIntensity(ringBufferRef.current, NUM_POINTS, screenX);
           setRawChartData(data);
         } else {
-          const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS);
+          const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS, reflection);
           setRawChartData(data);
         }
       }
     });
     return () => cancelAnimationFrame(id);
-  }, [isActive, screenX, waveUniformArrays, sourceUniforms, timeRef, intensityMode]);
+  }, [isActive, screenX, waveUniformArrays, sourceUniforms, timeRef, intensityMode, reflection]);
 
   return { chartData };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { computeWaveZ } from "@/lib/wave-math";
+import { computeWaveZ, type ReflectionParams } from "@/lib/wave-math";
 import type { WaveUniformArrays } from "@/lib/wave-params";
 import type { SourceUniforms } from "@/lib/wave-sources";
 
@@ -34,6 +34,8 @@ export interface UseProbeDataOptions {
   waveUniformArrays: WaveUniformArrays | undefined;
   sourceUniforms: SourceUniforms | undefined;
   isPlaying: boolean;
+  /** Reflexionsparameter (PROJ-15) */
+  reflection?: ReflectionParams;
 }
 
 export interface UseProbeDataReturn {
@@ -51,6 +53,7 @@ export function useProbeData({
   waveUniformArrays,
   sourceUniforms,
   isPlaying,
+  reflection,
 }: UseProbeDataOptions): UseProbeDataReturn {
   const [chartData, setChartData] = useState<ProbeDataPoint[]>([]);
 
@@ -65,6 +68,9 @@ export function useProbeData({
   useEffect(() => { waveUniformsRef.current = waveUniformArrays; }, [waveUniformArrays]);
   useEffect(() => { sourceUniformsRef.current = sourceUniforms; }, [sourceUniforms]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+
+  const reflectionRef = useRef(reflection);
+  useEffect(() => { reflectionRef.current = reflection; }, [reflection]);
 
   // Puffer leeren wenn sich Sonden aendern (neue Sonde / entfernt)
   const probeIds = probes.map((p) => p.id).join(",");
@@ -102,7 +108,8 @@ export function useProbeData({
           probe.y,
           t,
           waveUniformsRef.current!,
-          sourceUniformsRef.current!
+          sourceUniformsRef.current!,
+          reflectionRef.current
         );
       }
 

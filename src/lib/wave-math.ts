@@ -72,51 +72,97 @@ function distanceToSource(
   }
 }
 
+/** Reflexions-Parameter fuer CPU-seitige Berechnung */
+export interface ReflectionParams {
+  isActive: boolean;
+  wallX: number;
+  endType: "fixed" | "free";
+  displayMode: "total" | "incident" | "reflected";
+}
+
 /**
  * Berechnet die Wellenauslenkung z an einem einzelnen Punkt (x, y) zum Zeitpunkt t.
  *
- * @param x         X-Koordinate in Metern
- * @param y         Y-Koordinate in Metern
- * @param t         Zeit in Sekunden
- * @param uniforms  Wellenparameter-Arrays (Laenge 8)
- * @param sources   Quelleninformationen (Typ, Anzahl, Positionen)
- * @returns         Auslenkung z in Metern
+ * @param x           X-Koordinate in Metern
+ * @param y           Y-Koordinate in Metern
+ * @param t           Zeit in Sekunden
+ * @param uniforms    Wellenparameter-Arrays (Laenge 16)
+ * @param sources     Quelleninformationen (Typ, Anzahl, Positionen)
+ * @param reflection  Optionale Reflexionsparameter (PROJ-15)
+ * @returns           Auslenkung z in Metern
  */
 export function computeWaveZ(
   x: number,
   y: number,
   t: number,
   uniforms: WaveUniformArrays,
-  sources: SourceUniforms
+  sources: SourceUniforms,
+  reflection?: ReflectionParams
 ): number {
   let z = 0;
 
-  for (let i = 0; i < sources.sourceCount; i++) {
-    const pos = sources.sourcePositions[i];
-    if (!pos) continue;
+  // Einfallende Welle berechnen
+  if (!reflection?.isActive || reflection.displayMode !== "reflected") {
+    for (let i = 0; i < sources.sourceCount; i++) {
+      const pos = sources.sourcePositions[i];
+      if (!pos) continue;
 
-    const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
-    const envelope = Math.exp(-uniforms.dampings[i] * r);
+      const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
+      const envelope = Math.exp(-uniforms.dampings[i] * r);
 
-    // Wellenfront: Welle breitet sich mit v = omega/k aus
-    const waveSpeed = uniforms.angularFreqs[i] / Math.max(uniforms.waveNumbers[i], 0.001);
-    const wavefrontR = waveSpeed * t;
-    // smoothstep(edge0, edge1, x): 0 wenn x < edge0, 1 wenn x > edge1
-    const smoothstepVal = r <= wavefrontR - 0.3 ? 0 : r >= wavefrontR + 0.1 ? 1 : (() => {
-      const t2 = (r - (wavefrontR - 0.3)) / 0.4;
-      return t2 * t2 * (3 - 2 * t2);
-    })();
-    const mask = 1 - smoothstepVal;
+      const waveSpeed = uniforms.angularFreqs[i] / Math.max(uniforms.waveNumbers[i], 0.001);
+      const wavefrontR = waveSpeed * t;
+      const smoothstepVal = r <= wavefrontR - 0.3 ? 0 : r >= wavefrontR + 0.1 ? 1 : (() => {
+        const t2 = (r - (wavefrontR - 0.3)) / 0.4;
+        return t2 * t2 * (3 - 2 * t2);
+      })();
+      const mask = 1 - smoothstepVal;
 
-    z +=
-      uniforms.amplitudes[i] *
-      envelope *
-      Math.sin(
-        uniforms.waveNumbers[i] * r -
-          uniforms.angularFreqs[i] * t +
-          uniforms.phases[i]
-      ) *
-      mask;
+      z +=
+        uniforms.amplitudes[i] *
+        envelope *
+        Math.sin(
+          uniforms.waveNumbers[i] * r -
+            uniforms.angularFreqs[i] * t +
+            uniforms.phases[i]
+        ) *
+        mask;
+    }
+  }
+
+  // Reflektierte Welle berechnen (Spiegelquellen-Methode)
+  if (reflection?.isActive && reflection.displayMode !== "incident") {
+    const phaseShift = reflection.endType === "fixed" ? Math.PI : 0;
+
+    for (let i = 0; i < sources.sourceCount; i++) {
+      const pos = sources.sourcePositions[i];
+      if (!pos) continue;
+
+      // Spiegelposition
+      const mirrorX = 2 * reflection.wallX - pos.x;
+      const mirrorY = pos.y;
+
+      const r = distanceToSource(x, y, mirrorX, mirrorY, sources.sourceType);
+      const envelope = Math.exp(-uniforms.dampings[i] * r);
+
+      const waveSpeed = uniforms.angularFreqs[i] / Math.max(uniforms.waveNumbers[i], 0.001);
+      const wavefrontR = waveSpeed * t;
+      const smoothstepVal = r <= wavefrontR - 0.3 ? 0 : r >= wavefrontR + 0.1 ? 1 : (() => {
+        const t2 = (r - (wavefrontR - 0.3)) / 0.4;
+        return t2 * t2 * (3 - 2 * t2);
+      })();
+      const mask = 1 - smoothstepVal;
+
+      z +=
+        uniforms.amplitudes[i] *
+        envelope *
+        Math.sin(
+          uniforms.waveNumbers[i] * r -
+            uniforms.angularFreqs[i] * t +
+            uniforms.phases[i] + phaseShift
+        ) *
+        mask;
+    }
   }
 
   return z;
@@ -153,7 +199,8 @@ export function calculateIntensityProfile(
   t: number,
   uniforms: WaveUniformArrays,
   sources: SourceUniforms,
-  numPoints: number = 200
+  numPoints: number = 200,
+  reflection?: ReflectionParams
 ): IntensityPoint[] {
   const step = (2 * FIELD_HALF_SIZE) / (numPoints - 1);
 
@@ -163,7 +210,7 @@ export function calculateIntensityProfile(
 
   for (let i = 0; i < numPoints; i++) {
     const y = -FIELD_HALF_SIZE + i * step;
-    const z = computeWaveZ(screenX, y, t, uniforms, sources);
+    const z = computeWaveZ(screenX, y, t, uniforms, sources, reflection);
     yPositions.push(y);
     rawIntensities.push(z * z);
   }
@@ -303,7 +350,8 @@ export function computeCrossSectionData(
   t: number,
   uniforms: WaveUniformArrays,
   sources: SourceUniforms,
-  numPoints: number = 200
+  numPoints: number = 200,
+  reflection?: ReflectionParams
 ): CrossSectionPoint[] {
   const points: CrossSectionPoint[] = [];
   const step = (2 * FIELD_HALF_SIZE) / (numPoints - 1);
@@ -318,7 +366,7 @@ export function computeCrossSectionData(
 
     points.push({
       coord,
-      z: computeWaveZ(x, y, t, uniforms, sources),
+      z: computeWaveZ(x, y, t, uniforms, sources, reflection),
     });
   }
 

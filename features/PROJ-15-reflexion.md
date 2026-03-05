@@ -1,6 +1,6 @@
 # PROJ-15: Reflexion an losem und festem Ende
 
-## Status: Geplant
+## Status: In Review
 **Erstellt:** 2026-03-04
 **Zuletzt aktualisiert:** 2026-03-04
 
@@ -92,7 +92,40 @@ Die Reflexion wird durch eine "Spiegelquelle" an der gespiegelten Position der O
 <!-- Folgende Abschnitte werden von nachfolgenden Skills hinzugefügt -->
 
 ## Technisches Design (Solution Architect)
-_Wird von /architecture hinzugefügt_
+
+### Komponentenstruktur
+```
+WaveVisualization (Orchestrator)
+  +-- SourcePanel (linke Sidebar, enthaelt ReflectionPanel)
+  |    +-- ReflectionPanel (NEU)
+  |         +-- Switch "Reflexionswand aktivieren"
+  |         +-- Slider "Wandposition (x)"
+  |         +-- Select "Endtyp: Festes/Loses Ende"
+  |         +-- Select "Anzeige: Total/Einfallend/Reflektiert"
+  +-- WaveCanvas (erhaelt Reflexions-Uniforms)
+  |    +-- Wandmarker (Three.js Line, Cyan)
+  |    +-- Spiegelquellenmarker (transparente Kugeln)
+```
+
+### Neue/Geaenderte Dateien
+| Datei | Aenderung |
+|-------|-----------|
+| `src/hooks/useReflection.ts` | NEU: Reflexions-Zustand + Spiegelquellen-Logik |
+| `src/components/wave/ReflectionPanel.tsx` | NEU: UI-Panel |
+| `src/lib/wave-shader.ts` | Array-Limit 8->16, Reflexions-Uniforms |
+| `src/lib/wave-math.ts` | CPU-seitige Reflexion (ReflectionParams) |
+| `src/lib/wave-params.ts` | pad auf 16 |
+| `src/hooks/useWaveAnimation.ts` | Reflexions-Uniforms, Wand+Spiegelmarker |
+| `src/hooks/useCrossSection.ts` | Reflexion durchreichen |
+| `src/hooks/useIntensityScreen.ts` | Reflexion durchreichen |
+| `src/hooks/useProbeData.ts` | Reflexion durchreichen |
+| `src/components/wave/WaveVisualization.tsx` | Hook + Panel integrieren |
+| `src/components/wave/SourcePanel.tsx` | ReflectionPanel einbetten |
+
+### Technische Entscheidungen
+- Spiegelquellen-Methode im Shader (physikalisch korrekt, GPU-seitig billig)
+- Shader-Limit 8->16 fuer Original+Spiegelquellen
+- Keine neuen npm-Pakete noetig
 
 ## QA-Testergebnisse
 _Wird von /qa hinzugefügt_

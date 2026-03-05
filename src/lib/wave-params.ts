@@ -74,17 +74,17 @@ export function paramsToUniforms(params: WaveParams): WaveUniforms {
 // --- Array-basierte Uniforms fuer Per-Source-Parameter ---
 
 export interface WaveUniformArrays {
-  amplitudes: number[];    // Laenge 8
-  waveNumbers: number[];   // Laenge 8
-  angularFreqs: number[];  // Laenge 8
-  phases: number[];        // Laenge 8
-  dampings: number[];      // Laenge 8
+  amplitudes: number[];    // Laenge 16
+  waveNumbers: number[];   // Laenge 16
+  angularFreqs: number[];  // Laenge 16
+  phases: number[];        // Laenge 16
+  dampings: number[];      // Laenge 16
 }
 
 export function paramsArrayToUniforms(sources: WaveParams[]): WaveUniformArrays {
   const pad = (arr: number[]): number[] => {
     const result = [...arr];
-    while (result.length < 8) result.push(0);
+    while (result.length < 16) result.push(0);
     return result;
   };
   return {

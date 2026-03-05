@@ -11,15 +11,17 @@ import type { Probe } from "@/hooks/useProbeData";
 import { usePresets } from "@/hooks/usePresets";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useLearnMode } from "@/hooks/useLearnMode";
+import { useReflection } from "@/hooks/useReflection";
 import { ControlBar } from "./ControlBar";
 import { AnnotationPanel } from "./AnnotationPanel";
+import { ReflectionPanel } from "./ReflectionPanel";
 import { ParameterPanel } from "./ParameterPanel";
 import { SourcePanel } from "./SourcePanel";
 import { CrossSectionPanel } from "./CrossSectionPanel";
 import { IntensityScreenPanel } from "./IntensityScreenPanel";
 import { ProbePanel } from "./ProbePanel";
 import { TopDownOverlay } from "./TopDownOverlay";
-import { FIELD_HALF_SIZE } from "@/lib/wave-math";
+import { FIELD_HALF_SIZE, type ReflectionParams } from "@/lib/wave-math";
 import type { CrossSectionPlane3DConfig } from "@/hooks/useWaveAnimation";
 import type { UseWaveParamsReturn } from "@/hooks/useWaveParams";
 import type { UseWaveSourcesReturn } from "@/hooks/useWaveSources";
@@ -55,6 +57,7 @@ export function WaveVisualization() {
   const waveSourcesHook = useWaveSources();
   const waveParamsHook = useWaveParams(waveSourcesHook.config.count);
   const presetsHook = usePresets(waveParamsHook.applyParams, waveSourcesHook.applyConfig);
+  const reflectionHook = useReflection(waveSourcesHook.sourceUniforms);
 
   // Wrapped Hooks: markDirty bei manuellen Aenderungen
   const wrappedParamsHook: UseWaveParamsReturn = {
@@ -124,6 +127,20 @@ export function WaveVisualization() {
     probeTarget,
   );
 
+  // Reflexionsparameter fuer CPU-seitige Berechnungen (PROJ-15)
+  const reflectionParams = useMemo<ReflectionParams | undefined>(
+    () =>
+      reflectionHook.config.isActive
+        ? {
+            isActive: true,
+            wallX: reflectionHook.config.wallX,
+            endType: reflectionHook.config.endType,
+            displayMode: reflectionHook.config.displayMode,
+          }
+        : undefined,
+    [reflectionHook.config.isActive, reflectionHook.config.wallX, reflectionHook.config.endType, reflectionHook.config.displayMode]
+  );
+
   const crossSectionConfig = useMemo<CrossSectionPlane3DConfig>(
     () => ({
       isActive: csIsActive,
@@ -150,6 +167,8 @@ export function WaveVisualization() {
       nodeLinePoints: annotationsHook.nodeLinePoints,
       wavefrontCircles: annotationsHook.wavefrontCircles,
       pathDifferenceData: annotationsHook.pathDifferenceData,
+      reflectionConfig: reflectionHook.config,
+      mirrorSources: reflectionHook.mirrorSources,
     });
 
   // Sonden-Zeitverlaufsdaten
@@ -159,6 +178,7 @@ export function WaveVisualization() {
     waveUniformArrays: waveParamsHook.uniformArrays,
     sourceUniforms: waveSourcesHook.sourceUniforms,
     isPlaying,
+    reflection: reflectionParams,
   });
 
   // Preset-Laden soll auch die Zeit zuruecksetzen (Spezifikation: "nur Parameter und Zeit werden zurueckgesetzt")
@@ -190,6 +210,7 @@ export function WaveVisualization() {
     isActive: csIsActive,
     orientation: csOrientation,
     position: csPosition,
+    reflection: reflectionParams,
   });
 
   // Intensitaetsschirm-Daten (PROJ-9)
@@ -201,6 +222,7 @@ export function WaveVisualization() {
     isActive: isScreenActive,
     screenX,
     intensityMode,
+    reflection: reflectionParams,
   });
 
   const toggleScreen = useCallback(() => {
@@ -270,6 +292,7 @@ export function WaveVisualization() {
           isOpen={isSourcePanelOpen}
           onOpenChange={setIsSourcePanelOpen}
           isLearnMode={learnMode.isLearnMode}
+          reflectionHook={reflectionHook}
         />
         {/* Mittlerer Bereich: 3D-Canvas + optionales Schnittdiagramm */}
         <div className="flex flex-col flex-1 min-h-0">

@@ -23,7 +23,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ChevronsLeft, ChevronsRight, RotateCcw, AlertTriangle, Info } from "lucide-react";
+import { ReflectionPanel } from "./ReflectionPanel";
 import { SOURCE_TYPE_EXPLANATIONS } from "@/lib/physics-explanations";
+import type { UseReflectionReturn } from "@/hooks/useReflection";
 import {
   SOURCE_TYPES,
   SOURCE_TYPE_LABELS,
@@ -48,6 +50,8 @@ interface SourcePanelProps {
   onOpenChange: (open: boolean) => void;
   /** Lernmodus aktiv? Zeigt zusaetzliche Info-Icons (PROJ-13) */
   isLearnMode?: boolean;
+  /** Reflexions-Hook (PROJ-15) */
+  reflectionHook?: UseReflectionReturn;
 }
 
 export function SourcePanel({
@@ -55,6 +59,7 @@ export function SourcePanel({
   isOpen,
   onOpenChange,
   isLearnMode,
+  reflectionHook,
 }: SourcePanelProps) {
   const {
     config,
@@ -206,6 +211,13 @@ export function SourcePanel({
                 <p className="text-xs text-yellow-800">
                   Einige Quellen liegen ausserhalb des Simulationsfeldes und werden an den Rand geclippt.
                 </p>
+              </div>
+            )}
+
+            {/* Reflexion (PROJ-15) */}
+            {reflectionHook && (
+              <div className="pt-3 border-t">
+                <ReflectionPanel reflectionHook={reflectionHook} />
               </div>
             )}
           </div>

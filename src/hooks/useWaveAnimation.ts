@@ -15,6 +15,7 @@ import type {
   WavefrontCircle,
   PathDifferenceData,
 } from "@/hooks/useAnnotations";
+import type { ReflectionConfig } from "@/hooks/useReflection";
 
 function checkWebGLSupport(): boolean {
   if (typeof document === "undefined") return true;
@@ -60,6 +61,10 @@ interface UseWaveAnimationOptions {
   nodeLinePoints?: NodeLinePoint[];
   wavefrontCircles?: WavefrontCircle[];
   pathDifferenceData?: PathDifferenceData | null;
+  /** Reflexions-Konfiguration (PROJ-15) */
+  reflectionConfig?: ReflectionConfig;
+  /** Spiegelquellen-Positionen und Phasenverschiebungen */
+  mirrorSources?: Array<{ x: number; y: number; phaseShift: number }>;
 }
 
 export function useWaveAnimation({
@@ -78,6 +83,8 @@ export function useWaveAnimation({
   nodeLinePoints = [],
   wavefrontCircles = [],
   pathDifferenceData,
+  reflectionConfig,
+  mirrorSources = [],
 }: UseWaveAnimationOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -90,6 +97,7 @@ export function useWaveAnimation({
   const probeMarkerGroupRef = useRef<THREE.Group | null>(null);
   const crossSectionGroupRef = useRef<THREE.Group | null>(null);
   const annotationGroupRef = useRef<THREE.Group | null>(null);
+  const reflectionGroupRef = useRef<THREE.Group | null>(null);
   const gridHelperRef = useRef<THREE.GridHelper | null>(null);
   const zAxisGroupRef = useRef<THREE.Group | null>(null);
   const animFrameRef = useRef<number>(0);
@@ -161,7 +169,7 @@ export function useWaveAnimation({
 
     // Positionen in das vec2-Array schreiben
     const posArray = u.u_sourcePositions.value as THREE.Vector2[];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 16; i++) {
       if (i < sPositions.length) {
         posArray[i].set(sPositions[i].x, sPositions[i].y);
       } else {
@@ -240,6 +248,122 @@ export function useWaveAnimation({
       }
     }
   }, [sType, sCount, sPositions]);
+
+  // Reflexions-Uniforms und Wandmarker aktualisieren (PROJ-15)
+  const refActive = reflectionConfig?.isActive ?? false;
+  const refWallX = reflectionConfig?.wallX ?? 3.0;
+  const refType = reflectionConfig?.endType;
+  const refDisplayMode = reflectionConfig?.displayMode;
+
+  useEffect(() => {
+    if (!uniformsRef.current) return;
+    const u = uniformsRef.current;
+
+    if (!refActive) {
+      // Reflexion aus: nur Originalquellen aktiv
+      u.u_reflectionType.value = 0;
+      u.u_reflectionDisplayMode.value = 0;
+
+      // sourceCount auf Originalanzahl zuruecksetzen
+      if (sCount !== undefined) {
+        u.u_sourceCount.value = sCount;
+      }
+      return;
+    }
+
+    // Reflexion aktiv
+    u.u_reflectionType.value = refType === "fixed" ? 1 : 2;
+    u.u_reflectionWallX.value = refWallX;
+    u.u_reflectionDisplayMode.value =
+      refDisplayMode === "incident" ? 1 : refDisplayMode === "reflected" ? 2 : 0;
+
+    // Spiegelquellen in die Uniform-Arrays einfuegen
+    const origCount = sCount ?? 0;
+    const totalCount = origCount + mirrorSources.length;
+    u.u_sourceCount.value = totalCount;
+
+    const posArray = u.u_sourcePositions.value as THREE.Vector2[];
+    const phases = u.u_phases.value as number[];
+    const amplitudes = u.u_amplitudes.value as number[];
+    const waveNumbers = u.u_waveNumbers.value as number[];
+    const angularFreqs = u.u_angularFreqs.value as number[];
+    const dampings = u.u_dampings.value as number[];
+
+    for (let i = 0; i < mirrorSources.length; i++) {
+      const idx = origCount + i;
+      if (idx >= 16) break;
+      const mirror = mirrorSources[i];
+      posArray[idx].set(mirror.x, mirror.y);
+      // Spiegelquelle erbt Parameter der Originalquelle + Phasenverschiebung
+      const origIdx = i < origCount ? i : 0;
+      phases[idx] = (phases[origIdx] ?? 0) + mirror.phaseShift;
+      amplitudes[idx] = amplitudes[origIdx] ?? 0;
+      waveNumbers[idx] = waveNumbers[origIdx] ?? 0;
+      angularFreqs[idx] = angularFreqs[origIdx] ?? 0;
+      dampings[idx] = dampings[origIdx] ?? 0;
+    }
+  }, [refActive, refWallX, refType, refDisplayMode, mirrorSources, sCount]);
+
+  // Reflexionswand-Marker und Spiegelquellen-Marker (PROJ-15)
+  useEffect(() => {
+    const group = reflectionGroupRef.current;
+    if (!group) return;
+
+    // Alte Marker entfernen
+    while (group.children.length > 0) {
+      const child = group.children[0];
+      group.remove(child);
+      if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m) => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    }
+
+    if (!refActive) return;
+
+    const halfSize = PLANE_SIZE / 2;
+
+    // Wandlinie (Cyan, volle Y-Breite)
+    const wallPts = [
+      new THREE.Vector3(refWallX, -halfSize, 0),
+      new THREE.Vector3(refWallX, halfSize, 0),
+      new THREE.Vector3(refWallX, halfSize, 2),
+      new THREE.Vector3(refWallX, -halfSize, 2),
+      new THREE.Vector3(refWallX, -halfSize, 0),
+    ];
+    const wallGeo = new THREE.BufferGeometry().setFromPoints(wallPts);
+    const wallMat = new THREE.LineBasicMaterial({ color: 0x00cccc, linewidth: 2 });
+    const wallLine = new THREE.Line(wallGeo, wallMat);
+    group.add(wallLine);
+
+    // Bodenlinie der Wand (zusaetzliche Sichtbarkeit)
+    const wallFloorPts = [
+      new THREE.Vector3(refWallX, -halfSize, 0),
+      new THREE.Vector3(refWallX, halfSize, 0),
+    ];
+    const wallFloorGeo = new THREE.BufferGeometry().setFromPoints(wallFloorPts);
+    const wallFloorMat = new THREE.LineBasicMaterial({ color: 0x00ffff, linewidth: 2 });
+    const wallFloorLine = new THREE.Line(wallFloorGeo, wallFloorMat);
+    wallFloorLine.renderOrder = 990;
+    group.add(wallFloorLine);
+
+    // Spiegelquellen-Marker (transparent)
+    for (const mirror of mirrorSources) {
+      const markerGeo = new THREE.SphereGeometry(0.12, 16, 16);
+      const markerMat = new THREE.MeshBasicMaterial({
+        color: 0xff6600,
+        transparent: true,
+        opacity: 0.4,
+      });
+      const marker = new THREE.Mesh(markerGeo, markerMat);
+      marker.position.set(mirror.x, mirror.y, 0);
+      group.add(marker);
+    }
+  }, [refActive, refWallX, mirrorSources]);
 
   // Sondenmarker aktualisieren
   useEffect(() => {
@@ -783,6 +907,11 @@ export function useWaveAnimation({
     scene.add(annotationGroup);
     annotationGroupRef.current = annotationGroup;
 
+    // Reflexions-Gruppe (PROJ-15): Wandmarker + Spiegelquellenmarker
+    const reflectionGroup = new THREE.Group();
+    scene.add(reflectionGroup);
+    reflectionGroupRef.current = reflectionGroup;
+
     // Kamera (Perspektive fuer 3D)
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
     camera.position.copy(DEFAULT_CAMERA_POSITION);
@@ -891,18 +1020,22 @@ export function useWaveAnimation({
     );
 
     // Initiale Uniform-Werte (Defaults; der separate Effekt ueberschreibt sie sofort)
-    const defaultPositions = Array.from({ length: 8 }, () => new THREE.Vector2(0, 0));
-    const zeros = [0, 0, 0, 0, 0, 0, 0, 0];
+    const defaultPositions = Array.from({ length: 16 }, () => new THREE.Vector2(0, 0));
+    const zeros16 = new Array(16).fill(0);
     const uniforms = {
       u_time: { value: 0.0 },
-      u_amplitudes: { value: [1.0, ...zeros.slice(1)] },
-      u_waveNumbers: { value: [Math.PI, ...zeros.slice(1)] },
-      u_angularFreqs: { value: [2 * Math.PI, ...zeros.slice(1)] },
-      u_phases: { value: [...zeros] },
-      u_dampings: { value: [...zeros] },
+      u_amplitudes: { value: [1.0, ...zeros16.slice(1)] },
+      u_waveNumbers: { value: [Math.PI, ...zeros16.slice(1)] },
+      u_angularFreqs: { value: [2 * Math.PI, ...zeros16.slice(1)] },
+      u_phases: { value: [...zeros16] },
+      u_dampings: { value: [...zeros16] },
       u_sourceType: { value: 0 },
       u_sourceCount: { value: 1 },
       u_sourcePositions: { value: defaultPositions },
+      // Reflexion (PROJ-15)
+      u_reflectionType: { value: 0 },
+      u_reflectionWallX: { value: 3.0 },
+      u_reflectionDisplayMode: { value: 0 },
     };
     uniformsRef.current = uniforms;
 

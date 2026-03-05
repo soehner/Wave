@@ -9,21 +9,31 @@
  *   CIRCLE (1):   r = |Abstand zum Mittelpunkt - Kreisradius|
  *   BAR (2):      r = kuerzester Abstand zur Linienstrecke (entlang Y)
  *   TRIANGLE (3): r = kuerzester Abstand zur Dreieckskontur
+ *
+ * Reflexion (PROJ-15): Spiegelquellen-Methode
+ *   u_reflectionType: 0 = aus, 1 = festes Ende (Phase +pi), 2 = loses Ende (Phase +0)
+ *   u_reflectionWallX: X-Position der Reflexionswand
+ *   u_reflectionDisplayMode: 0 = total (einfallend+reflektiert), 1 = nur einfallend, 2 = nur reflektiert
  */
 export const waveVertexShader = /* glsl */ `
   uniform float u_time;
 
-  // Per-Source Wellenparameter (Arrays der Laenge 8)
-  uniform float u_amplitudes[8];
-  uniform float u_waveNumbers[8];    // k = 2pi / lambda
-  uniform float u_angularFreqs[8];   // omega = 2pi * f
-  uniform float u_phases[8];         // phi
-  uniform float u_dampings[8];       // d (Daempfungskonstante, 1/m)
+  // Per-Source Wellenparameter (Arrays der Laenge 16 fuer Original + Spiegelquellen)
+  uniform float u_amplitudes[16];
+  uniform float u_waveNumbers[16];    // k = 2pi / lambda
+  uniform float u_angularFreqs[16];   // omega = 2pi * f
+  uniform float u_phases[16];         // phi
+  uniform float u_dampings[16];       // d (Daempfungskonstante, 1/m)
 
   // Quellenparameter
   uniform int u_sourceType;      // 0=POINT, 1=CIRCLE, 2=BAR, 3=TRIANGLE
-  uniform int u_sourceCount;     // 1..8
-  uniform vec2 u_sourcePositions[8];
+  uniform int u_sourceCount;     // 1..16
+  uniform vec2 u_sourcePositions[16];
+
+  // Reflexion (PROJ-15)
+  uniform int u_reflectionType;         // 0=aus, 1=festes Ende, 2=loses Ende
+  uniform float u_reflectionWallX;      // X-Position der Wand
+  uniform int u_reflectionDisplayMode;  // 0=total, 1=nur einfallend, 2=nur reflektiert
 
   varying float v_displacement;
 
@@ -71,8 +81,26 @@ export const waveVertexShader = /* glsl */ `
     float z = 0.0;
     float sumMaxAmp = 0.0;
 
-    for (int i = 0; i < 8; i++) {
-      if (i >= u_sourceCount) break;
+    // Bestimme effektive Quellenanzahl basierend auf Reflexionsmodus
+    int effectiveCount = u_sourceCount;
+    int originalCount = u_sourceCount;
+
+    // Bei Reflexion: Originalquellen sind 0..originalCount-1,
+    // Spiegelquellen sind originalCount..effectiveCount-1
+    if (u_reflectionType > 0) {
+      originalCount = u_sourceCount / 2;
+      effectiveCount = u_sourceCount;
+    }
+
+    for (int i = 0; i < 16; i++) {
+      if (i >= effectiveCount) break;
+
+      // Bestimme ob diese Quelle einfallend oder reflektiert ist
+      bool isReflected = (u_reflectionType > 0) && (i >= originalCount);
+
+      // Displaymode-Filter
+      if (u_reflectionDisplayMode == 1 && isReflected) continue;  // nur einfallend
+      if (u_reflectionDisplayMode == 2 && !isReflected) continue; // nur reflektiert
 
       float r = distanceToSource(position.xy, u_sourcePositions[i]);
       float envelope = exp(-u_dampings[i] * r);
