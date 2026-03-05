@@ -21,6 +21,7 @@ import { CrossSectionPanel } from "./CrossSectionPanel";
 import { IntensityScreenPanel } from "./IntensityScreenPanel";
 import { ProbePanel } from "./ProbePanel";
 import { TopDownOverlay } from "./TopDownOverlay";
+import { ComparePanelLayout } from "./ComparePanelLayout";
 import { FIELD_HALF_SIZE, type ReflectionParams } from "@/lib/wave-math";
 import type { CrossSectionPlane3DConfig } from "@/hooks/useWaveAnimation";
 import type { UseWaveParamsReturn } from "@/hooks/useWaveParams";
@@ -32,13 +33,16 @@ export function WaveVisualization() {
   const [speedMultiplier, setSpeedMultiplier] = useState(1.0);
   const [currentTime, setCurrentTime] = useState(0);
   const [is2DView, setIs2DView] = useState(false);
-  const [isSmallViewport, setIsSmallViewport] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 1280 : true
   );
   const [isSourcePanelOpen, setIsSourcePanelOpen] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 1280 : true
   );
+
+  // Vergleichsmodus (PROJ-14)
+  const [isCompareMode, setIsCompareMode] = useState(false);
 
   // Schnittebenen-Zustand (lebt hier, wird an beide Hooks weitergegeben)
   const [csIsActive, setCsIsActive] = useState(false);
@@ -75,7 +79,15 @@ export function WaveVisualization() {
   };
 
   useEffect(() => {
-    const check = () => setIsSmallViewport(window.innerWidth < 1024);
+    const check = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // Panels auf mobilen Geraeten automatisch schliessen
+      if (mobile) {
+        setIsPanelOpen(false);
+        setIsSourcePanelOpen(false);
+      }
+    };
     check();
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
@@ -250,6 +262,10 @@ export function WaveVisualization() {
     setIs2DView((prev) => !prev);
   }, []);
 
+  const toggleCompareMode = useCallback(() => {
+    setIsCompareMode((prev) => !prev);
+  }, []);
+
   const handleSetCsPosition = useCallback((p: number) => {
     setCsPosition(Math.max(-FIELD_HALF_SIZE, Math.min(FIELD_HALF_SIZE, p)));
   }, []);
@@ -272,87 +288,101 @@ export function WaveVisualization() {
 
   return (
     <div className="flex h-screen flex-col bg-background">
-      <header className="flex items-center justify-between px-4 py-2 border-b">
-        <h1 className="text-lg font-semibold tracking-tight">
+      <header className="flex items-center justify-between px-3 sm:px-4 py-1.5 sm:py-2 border-b">
+        <h1 className="text-base sm:text-lg font-semibold tracking-tight">
           WavePhysics
         </h1>
-        <p className="text-sm text-muted-foreground hidden md:block font-mono">
+        <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block font-mono">
           z = A·sin(k·r - ω·t + φ)
         </p>
       </header>
-      {isSmallViewport && (
-        <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200 text-sm text-yellow-800">
-          Fuer die beste Darstellung empfehlen wir eine Bildschirmbreite von mindestens 1024 px.
+      {/* Hauptbereich: Einzelmodus oder Vergleichsmodus */}
+      {isCompareMode ? (
+        <ComparePanelLayout
+          sharedTimeRef={timeRef}
+          isPlaying={isPlaying}
+          speedMultiplier={speedMultiplier}
+          is2DView={is2DView}
+          onFpsUpdate={handleFpsUpdate}
+          onTimeUpdate={handleTimeUpdate}
+          initialParamsHook={waveParamsHook}
+          initialSourcesHook={waveSourcesHook}
+        />
+      ) : (
+        <div className="flex flex-1 min-h-0 relative">
+          <SourcePanel
+            sourceHook={wrappedSourcesHook}
+            isOpen={isSourcePanelOpen}
+            onOpenChange={(open) => {
+              setIsSourcePanelOpen(open);
+              if (open && isMobile) setIsPanelOpen(false);
+            }}
+            isLearnMode={learnMode.isLearnMode}
+            reflectionHook={reflectionHook}
+          />
+          {/* Mittlerer Bereich: 3D-Canvas + optionales Schnittdiagramm */}
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className={(csIsActive || probes.length > 0 || isScreenActive) ? "flex-[2] min-h-0 relative" : "flex-1 min-h-0 relative"}>
+              <div
+                ref={containerRef}
+                className="absolute inset-0"
+              />
+              <TopDownOverlay visible={is2DView} />
+            </div>
+            {probes.length > 0 && (
+              <div className="flex-[1] min-h-[140px] sm:min-h-[180px]">
+                <ProbePanel
+                  probes={probes}
+                  chartData={probeChartData}
+                  onRemoveProbe={handleRemoveProbe}
+                  onRemoveAll={handleRemoveAllProbes}
+                />
+              </div>
+            )}
+            {isScreenActive && (
+              <div className="flex-[1] min-h-[140px] sm:min-h-[180px]">
+                <IntensityScreenPanel
+                  screenX={screenX}
+                  onScreenXChange={handleSetScreenX}
+                  screenXMin={-FIELD_HALF_SIZE + 0.5}
+                  screenXMax={FIELD_HALF_SIZE - 0.5}
+                  intensityMode={intensityMode}
+                  onIntensityModeChange={setIntensityMode}
+                  chartData={intensityChartData}
+                  sourceCount={waveSourcesHook.config.count}
+                />
+              </div>
+            )}
+            {csIsActive && (
+              <div className="flex-[1] min-h-[140px] sm:min-h-[180px]">
+                <CrossSectionPanel
+                  isActive={csIsActive}
+                  orientation={csOrientation}
+                  onOrientationChange={setCsOrientation}
+                  position={csPosition}
+                  onPositionChange={handleSetCsPosition}
+                  positionMin={-FIELD_HALF_SIZE}
+                  positionMax={FIELD_HALF_SIZE}
+                  chartData={chartData}
+                  sourceUniforms={waveSourcesHook.sourceUniforms}
+                />
+              </div>
+            )}
+          </div>
+          <ParameterPanel
+            waveParamsHook={wrappedParamsHook}
+            sourceCount={waveSourcesHook.config.count}
+            isOpen={isPanelOpen}
+            onOpenChange={(open) => {
+              setIsPanelOpen(open);
+              if (open && isMobile) setIsSourcePanelOpen(false);
+            }}
+            highlightedParam={learnMode.highlightedParam}
+            onFormulaSymbolClick={handleFormulaSymbolClick}
+            onLearnSliderChange={learnMode.showSliderToast}
+          />
         </div>
       )}
-      {/* Hauptbereich: SourcePanel (links) + 3D-Canvas + ParameterPanel (rechts) */}
-      <div className="flex flex-1 min-h-0 relative">
-        <SourcePanel
-          sourceHook={wrappedSourcesHook}
-          isOpen={isSourcePanelOpen}
-          onOpenChange={setIsSourcePanelOpen}
-          isLearnMode={learnMode.isLearnMode}
-          reflectionHook={reflectionHook}
-        />
-        {/* Mittlerer Bereich: 3D-Canvas + optionales Schnittdiagramm */}
-        <div className="flex flex-col flex-1 min-h-0">
-          <div className={(csIsActive || probes.length > 0 || isScreenActive) ? "flex-[2] min-h-0 relative" : "flex-1 min-h-0 relative"}>
-            <div
-              ref={containerRef}
-              className="absolute inset-0"
-            />
-            <TopDownOverlay visible={is2DView} />
-          </div>
-          {probes.length > 0 && (
-            <div className="flex-[1] min-h-0" style={{ minHeight: "180px" }}>
-              <ProbePanel
-                probes={probes}
-                chartData={probeChartData}
-                onRemoveProbe={handleRemoveProbe}
-                onRemoveAll={handleRemoveAllProbes}
-              />
-            </div>
-          )}
-          {isScreenActive && (
-            <div className="flex-[1] min-h-0" style={{ minHeight: "180px" }}>
-              <IntensityScreenPanel
-                screenX={screenX}
-                onScreenXChange={handleSetScreenX}
-                screenXMin={-FIELD_HALF_SIZE + 0.5}
-                screenXMax={FIELD_HALF_SIZE - 0.5}
-                intensityMode={intensityMode}
-                onIntensityModeChange={setIntensityMode}
-                chartData={intensityChartData}
-                sourceCount={waveSourcesHook.config.count}
-              />
-            </div>
-          )}
-          {csIsActive && (
-            <div className="flex-[1] min-h-0" style={{ minHeight: "180px" }}>
-              <CrossSectionPanel
-                isActive={csIsActive}
-                orientation={csOrientation}
-                onOrientationChange={setCsOrientation}
-                position={csPosition}
-                onPositionChange={handleSetCsPosition}
-                positionMin={-FIELD_HALF_SIZE}
-                positionMax={FIELD_HALF_SIZE}
-                chartData={chartData}
-                sourceUniforms={waveSourcesHook.sourceUniforms}
-              />
-            </div>
-          )}
-        </div>
-        <ParameterPanel
-          waveParamsHook={wrappedParamsHook}
-          sourceCount={waveSourcesHook.config.count}
-          isOpen={isPanelOpen}
-          onOpenChange={setIsPanelOpen}
-          highlightedParam={learnMode.highlightedParam}
-          onFormulaSymbolClick={handleFormulaSymbolClick}
-          onLearnSliderChange={learnMode.showSliderToast}
-        />
-      </div>
       <ControlBar
         isPlaying={isPlaying}
         onTogglePlay={() => setIsPlaying((prev) => !prev)}
@@ -390,6 +420,8 @@ export function WaveVisualization() {
         annotationDeltaSLambda={annotationsHook.pathDifferenceData?.deltaSLambda}
         isLearnMode={learnMode.isLearnMode}
         onToggleLearnMode={learnMode.toggleLearnMode}
+        isCompareMode={isCompareMode}
+        onToggleCompareMode={toggleCompareMode}
       />
     </div>
   );

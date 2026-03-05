@@ -17,7 +17,7 @@
 | PROJ-11 | Screenshot & URL-Sharing | Geplant | 2026-03-04 |
 | PROJ-12 | Farbschema-Optionen | Geplant | 2026-03-04 |
 | PROJ-13 | In-App Physik-Erklärungen | In Review | 2026-03-04 |
-| PROJ-14 | Vergleichsmodus (Split-Screen) | Geplant | 2026-03-04 |
+| PROJ-14 | Vergleichsmodus (Split-Screen) | In Review | 2026-03-04 |
 | PROJ-15 | Reflexion an losem und festem Ende | In Review | 2026-03-04 |
 
 ## Nächste verfügbare ID: PROJ-16

@@ -107,6 +107,13 @@ export function computeWaveZ(
       const pos = sources.sourcePositions[i];
       if (!pos) continue;
 
+      // BUG-3 Fix: Wand-Clipping -- einfallende Welle nur auf Quellenseite
+      if (reflection?.isActive) {
+        const sourceIsLeft = pos.x < reflection.wallX;
+        const pointIsLeft = x < reflection.wallX;
+        if (sourceIsLeft !== pointIsLeft) continue;
+      }
+
       const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
       const envelope = Math.exp(-uniforms.dampings[i] * r);
 
@@ -141,6 +148,12 @@ export function computeWaveZ(
       // Spiegelposition
       const mirrorX = 2 * reflection.wallX - pos.x;
       const mirrorY = pos.y;
+
+      // BUG-3 Fix: Wand-Clipping -- reflektierte Welle nur auf Originalquellenseite
+      // Spiegelquelle ist auf der Gegenseite -> reflektierte Welle auf der Originalseite
+      const mirrorIsLeft = mirrorX < reflection.wallX;
+      const pointIsLeft = x < reflection.wallX;
+      if (mirrorIsLeft === pointIsLeft) continue;
 
       const r = distanceToSource(x, y, mirrorX, mirrorY, sources.sourceType);
       const envelope = Math.exp(-uniforms.dampings[i] * r);

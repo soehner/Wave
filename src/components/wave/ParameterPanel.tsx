@@ -76,9 +76,9 @@ export function ParameterPanel({
         </Button>
       </CollapsibleTrigger>
 
-      <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right">
+      <CollapsibleContent className="absolute md:relative right-0 top-0 z-20 h-full data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right">
         <aside
-          className="w-72 xl:w-80 h-full border-l bg-background overflow-y-auto"
+          className="w-64 sm:w-72 xl:w-80 h-full border-l bg-background overflow-y-auto shadow-lg md:shadow-none"
           aria-label="Wellenparameter"
         >
           {/* Header */}

@@ -92,6 +92,14 @@ export const waveVertexShader = /* glsl */ `
       effectiveCount = u_sourceCount;
     }
 
+    // BUG-2 Fix: Normierung nur mit Originalquellen-Amplituden
+    // Spiegelquellen duerfen nicht mitgezaehlt werden, sonst wird
+    // die Amplitude bei stehenden Wellen halbiert
+    for (int i = 0; i < 16; i++) {
+      if (i >= originalCount) break;
+      sumMaxAmp += u_amplitudes[i];
+    }
+
     for (int i = 0; i < 16; i++) {
       if (i >= effectiveCount) break;
 
@@ -102,6 +110,22 @@ export const waveVertexShader = /* glsl */ `
       if (u_reflectionDisplayMode == 1 && isReflected) continue;  // nur einfallend
       if (u_reflectionDisplayMode == 2 && !isReflected) continue; // nur reflektiert
 
+      // BUG-3 Fix: Wand-Clipping -- Wellen nur auf der Quellenseite der Wand
+      // Einfallende Welle: nur auf der gleichen Seite wie die Originalquelle
+      // Reflektierte Welle: nur auf der gegenueberliegenden Seite der Spiegelquelle
+      //   (= gleiche Seite wie die Originalquelle)
+      if (u_reflectionType > 0) {
+        bool sourceIsLeft = u_sourcePositions[i].x < u_reflectionWallX;
+        bool vertexIsLeft = position.x < u_reflectionWallX;
+        if (isReflected) {
+          // Spiegelquelle ist auf der Gegenseite -> reflektierte Welle auf der Originalseite
+          if (sourceIsLeft == vertexIsLeft) continue;
+        } else {
+          // Originalquelle -> Welle nur auf ihrer Seite
+          if (sourceIsLeft != vertexIsLeft) continue;
+        }
+      }
+
       float r = distanceToSource(position.xy, u_sourcePositions[i]);
       float envelope = exp(-u_dampings[i] * r);
 
@@ -111,11 +135,9 @@ export const waveVertexShader = /* glsl */ `
       float mask = 1.0 - smoothstep(wavefrontR - 0.3, wavefrontR + 0.1, r);
 
       z += u_amplitudes[i] * envelope * sin(u_waveNumbers[i] * r - u_angularFreqs[i] * u_time + u_phases[i]) * mask;
-
-      sumMaxAmp += u_amplitudes[i];
     }
 
-    // Normierung: Summe der Amplituden als theoretisches Maximum
+    // Normierung: Summe der Originalquellen-Amplituden als theoretisches Maximum
     // Damit bleibt konstruktive Interferenz in der Farbskala sichtbar
     float normFactor = max(sumMaxAmp, 0.001);
     v_displacement = clamp(z / normFactor, -1.0, 1.0);

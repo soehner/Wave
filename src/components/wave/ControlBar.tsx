@@ -7,7 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Play, Pause, RotateCcw, SkipBack, Scissors, Layers, Monitor, GraduationCap } from "lucide-react";
+import { Play, Pause, RotateCcw, SkipBack, Scissors, Layers, Monitor, GraduationCap, Columns2 } from "lucide-react";
 import { PresetSelector } from "./PresetSelector";
 import { SpeedControl } from "./SpeedControl";
 import { AnnotationPanel } from "./AnnotationPanel";
@@ -48,6 +48,9 @@ interface ControlBarProps {
   // Lernmodus (PROJ-13)
   isLearnMode?: boolean;
   onToggleLearnMode?: () => void;
+  // Vergleichsmodus (PROJ-14)
+  isCompareMode?: boolean;
+  onToggleCompareMode?: () => void;
 }
 
 export function ControlBar({
@@ -83,10 +86,12 @@ export function ControlBar({
   annotationDeltaSLambda,
   isLearnMode,
   onToggleLearnMode,
+  isCompareMode,
+  onToggleCompareMode,
 }: ControlBarProps) {
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3 border-t bg-background/80 backdrop-blur-sm">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between gap-2 sm:gap-4 px-2 sm:px-4 py-2 sm:py-3 border-t bg-background/80 backdrop-blur-sm overflow-x-auto scrollbar-thin">
+      <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
         <Button
           variant="outline"
           size="sm"
@@ -244,6 +249,37 @@ export function ControlBar({
           </>
         )}
 
+        {/* Vergleichsmodus-Toggle (PROJ-14) */}
+        {onToggleCompareMode && (
+          <>
+            <div className="h-5 w-px bg-border" />
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={isCompareMode ? "default" : "outline"}
+                    size="sm"
+                    onClick={onToggleCompareMode}
+                    className="gap-2"
+                    aria-label="Vergleichsmodus ein-/ausschalten"
+                    aria-pressed={isCompareMode}
+                  >
+                    <Columns2 className="h-4 w-4" />
+                    <span className="hidden sm:inline">Vergleich</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">
+                    {isCompareMode
+                      ? "Vergleichsmodus aktiv: Zwei Wellenfelder nebeneinander"
+                      : "Vergleichsmodus: Zwei Wellenfelder mit unterschiedlichen Parametern vergleichen"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </>
+        )}
+
         {/* Geschwindigkeitsregler */}
         {onSpeedChange && onStepFrame && speedMultiplier !== undefined && (
           <>
@@ -259,7 +295,7 @@ export function ControlBar({
       </div>
 
       {/* Rechte Seite: Zeitanzeige + FPS */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
         {currentTime !== undefined && (
           <span
             className="text-xs text-muted-foreground font-mono tabular-nums"
