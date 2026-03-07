@@ -29,6 +29,7 @@ export const waveVertexShader = /* glsl */ `
   uniform int u_sourceType;      // 0=POINT, 1=CIRCLE, 2=BAR, 3=TRIANGLE
   uniform int u_sourceCount;     // 1..16
   uniform vec2 u_sourcePositions[16];
+  uniform float u_sourceZ[16];   // Z-Hoehe jeder Quelle (PROJ-16)
 
   // Reflexion (PROJ-15)
   uniform int u_reflectionType;         // 0=aus, 1=festes Ende, 2=loses Ende
@@ -126,7 +127,10 @@ export const waveVertexShader = /* glsl */ `
         }
       }
 
-      float r = distanceToSource(position.xy, u_sourcePositions[i]);
+      float r2d = distanceToSource(position.xy, u_sourcePositions[i]);
+      // 3D-Abstand: Einbeziehung der Quellenhoehe (PROJ-16)
+      float sz = u_sourceZ[i];
+      float r = sqrt(r2d * r2d + sz * sz);
       float envelope = exp(-u_dampings[i] * r);
 
       // Wellenfront: Welle breitet sich mit v = omega/k aus

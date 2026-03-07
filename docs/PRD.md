@@ -33,6 +33,7 @@ WavePhysics ist eine interaktive Web-Applikation für den Physikunterricht, die 
 | P3 | Punkt-Sonde / z vs. t (PROJ-8) | Klick auf Punkt zeigt Schwingungsverlauf z(x,y,t) als Zeitdiagramm | Geplant |
 | P3 | Intensitätsschirm (PROJ-9) | Virtuelle Wand zeigt Intensitätsverteilung I(y) = A²(y) | Geplant |
 | P3 | Vergleichsmodus (PROJ-14) | Split-Screen mit zwei Wellenfeldern und unterschiedlichen Parametern | Geplant |
+| P3 | Mausgesteuerte Quellenhöhe (PROJ-16) | Vertikale Mausbewegung steuert die Z-Höhe der aktiven Quelle über der Wellenebene | Geplant |
 
 ## Erfolgskennzahlen
 

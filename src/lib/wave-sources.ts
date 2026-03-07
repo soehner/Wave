@@ -79,12 +79,16 @@ export interface SourceUniforms {
   sourceType: number;
   sourceCount: number;
   sourcePositions: Array<{ x: number; y: number }>;
+  /** Z-Hoehe jeder Quelle ueber der Wellenebene (PROJ-16) */
+  sourceZ: number[];
 }
 
-export function sourceConfigToUniforms(config: SourceConfig): SourceUniforms {
+export function sourceConfigToUniforms(config: SourceConfig, sourceZ?: number[]): SourceUniforms {
+  const count = config.count;
   return {
     sourceType: SOURCE_TYPE_INT[config.type],
-    sourceCount: config.count,
-    sourcePositions: computeSourcePositions(config.count, config.spacing),
+    sourceCount: count,
+    sourcePositions: computeSourcePositions(count, config.spacing),
+    sourceZ: sourceZ ?? new Array(SOURCE_COUNT_MAX).fill(0),
   };
 }

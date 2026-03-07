@@ -114,7 +114,10 @@ export function computeWaveZ(
         if (sourceIsLeft !== pointIsLeft) continue;
       }
 
-      const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
+      const r2d = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
+      // 3D-Abstand: Einbeziehung der Quellenhoehe (PROJ-16)
+      const sz = sources.sourceZ?.[i] ?? 0;
+      const r = Math.sqrt(r2d * r2d + sz * sz);
       const envelope = Math.exp(-uniforms.dampings[i] * r);
 
       const waveSpeed = uniforms.angularFreqs[i] / Math.max(uniforms.waveNumbers[i], 0.001);
@@ -155,7 +158,10 @@ export function computeWaveZ(
       const pointIsLeft = x < reflection.wallX;
       if (mirrorIsLeft === pointIsLeft) continue;
 
-      const r = distanceToSource(x, y, mirrorX, mirrorY, sources.sourceType);
+      const r2dMirror = distanceToSource(x, y, mirrorX, mirrorY, sources.sourceType);
+      // Spiegelquelle erbt Z-Hoehe der Originalquelle (PROJ-16)
+      const szMirror = sources.sourceZ?.[i] ?? 0;
+      const r = Math.sqrt(r2dMirror * r2dMirror + szMirror * szMirror);
       const envelope = Math.exp(-uniforms.dampings[i] * r);
 
       const waveSpeed = uniforms.angularFreqs[i] / Math.max(uniforms.waveNumbers[i], 0.001);

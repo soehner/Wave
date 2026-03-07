@@ -12,6 +12,7 @@ import { usePresets } from "@/hooks/usePresets";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useLearnMode } from "@/hooks/useLearnMode";
 import { useReflection } from "@/hooks/useReflection";
+import { useMouseTracking } from "@/hooks/useMouseTracking";
 import { ControlBar } from "./ControlBar";
 import { AnnotationPanel } from "./AnnotationPanel";
 import { ReflectionPanel } from "./ReflectionPanel";
@@ -62,6 +63,7 @@ export function WaveVisualization() {
   const waveParamsHook = useWaveParams(waveSourcesHook.config.count);
   const presetsHook = usePresets(waveParamsHook.applyParams, waveSourcesHook.applyConfig);
   const reflectionHook = useReflection(waveSourcesHook.sourceUniforms);
+  const mouseTrackingHook = useMouseTracking();
 
   // Wrapped Hooks: markDirty bei manuellen Aenderungen
   const wrappedParamsHook: UseWaveParamsReturn = {
@@ -127,6 +129,23 @@ export function WaveVisualization() {
     setProbes([]);
   }, []);
 
+  // PROJ-16: Maussteuerung fuer Quellenhoehe
+  const handleCanvasMouseMove = useCallback((movementY: number) => {
+    if (!mouseTrackingHook.isActive) return;
+    const idx = waveSourcesHook.activeSourceIndex;
+    const currentZ = waveSourcesHook.sourceZ[idx] ?? 0;
+    const newZ = mouseTrackingHook.handleMouseMove(movementY, currentZ);
+    waveSourcesHook.setSourceZ(idx, newZ);
+  }, [mouseTrackingHook, waveSourcesHook]);
+
+
+  // PROJ-16: Mausverfolgung deaktivieren wenn Top-Down-Ansicht aktiv (BUG-2)
+  useEffect(() => {
+    if (is2DView && mouseTrackingHook.isActive) {
+      mouseTrackingHook.deactivate();
+    }
+  }, [is2DView, mouseTrackingHook]);
+
   // Lernmodus-Hook (PROJ-13)
   const learnMode = useLearnMode();
 
@@ -181,6 +200,8 @@ export function WaveVisualization() {
       pathDifferenceData: annotationsHook.pathDifferenceData,
       reflectionConfig: reflectionHook.config,
       mirrorSources: reflectionHook.mirrorSources,
+      isMouseTrackingActive: mouseTrackingHook.isActive,
+      onCanvasMouseMove: handleCanvasMouseMove,
     });
 
   // Sonden-Zeitverlaufsdaten
@@ -199,20 +220,23 @@ export function WaveVisualization() {
     presetsHook.loadPreset(id);
     resetTime();
     setCurrentTime(0);
+    // PROJ-16: Mausverfolgung deaktivieren und Z-Hoehen zuruecksetzen
+    mouseTrackingHook.deactivate();
     // Sonden bleiben, aber Puffer wird geleert (probeIds aendern sich nicht -> manuell triggern)
     setProbes((prev) => prev.map((p) => ({ ...p, id: `probe-${probeCounterRef.current++}` })));
     // Preset-Loading-Flag nach kurzer Verzoegerung zuruecksetzen
     setTimeout(() => learnMode.setPresetLoading(false), 100);
-  }, [presetsHook, resetTime, learnMode]);
+  }, [presetsHook, resetTime, learnMode, mouseTrackingHook]);
 
   const handleResetToPreset = useCallback(() => {
     learnMode.setPresetLoading(true);
     presetsHook.resetToPreset();
     resetTime();
     setCurrentTime(0);
+    mouseTrackingHook.deactivate();
     setProbes((prev) => prev.map((p) => ({ ...p, id: `probe-${probeCounterRef.current++}` })));
     setTimeout(() => learnMode.setPresetLoading(false), 100);
-  }, [presetsHook, resetTime, learnMode]);
+  }, [presetsHook, resetTime, learnMode, mouseTrackingHook]);
 
   const { chartData } = useCrossSection({
     timeRef,
@@ -319,6 +343,9 @@ export function WaveVisualization() {
             }}
             isLearnMode={learnMode.isLearnMode}
             reflectionHook={reflectionHook}
+            isMouseTrackingActive={mouseTrackingHook.isActive}
+            onToggleMouseTracking={mouseTrackingHook.toggle}
+            is2DView={is2DView}
           />
           {/* Mittlerer Bereich: 3D-Canvas + optionales Schnittdiagramm */}
           <div className="flex flex-col flex-1 min-h-0">

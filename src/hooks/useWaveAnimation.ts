@@ -65,6 +65,10 @@ interface UseWaveAnimationOptions {
   reflectionConfig?: ReflectionConfig;
   /** Spiegelquellen-Positionen und Phasenverschiebungen */
   mirrorSources?: Array<{ x: number; y: number; phaseShift: number }>;
+  /** Mausverfolgung aktiv? (PROJ-16) */
+  isMouseTrackingActive?: boolean;
+  /** Callback fuer Mausbewegung ueber Canvas (PROJ-16) */
+  onCanvasMouseMove?: (movementY: number) => void;
 }
 
 export function useWaveAnimation({
@@ -85,6 +89,8 @@ export function useWaveAnimation({
   pathDifferenceData,
   reflectionConfig,
   mirrorSources = [],
+  isMouseTrackingActive = false,
+  onCanvasMouseMove,
 }: UseWaveAnimationOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -144,6 +150,32 @@ export function useWaveAnimation({
     onWaveClickRef.current = onWaveClick;
   }, [onWaveClick]);
 
+  // PROJ-16: Refs fuer Mausverfolgung-Callbacks
+  const isMouseTrackingActiveRef = useRef(isMouseTrackingActive);
+  const onCanvasMouseMoveRef = useRef(onCanvasMouseMove);
+
+  useEffect(() => {
+    isMouseTrackingActiveRef.current = isMouseTrackingActive;
+  }, [isMouseTrackingActive]);
+
+  useEffect(() => {
+    onCanvasMouseMoveRef.current = onCanvasMouseMove;
+  }, [onCanvasMouseMove]);
+
+
+  // PROJ-16: OrbitControls deaktivieren wenn Mausverfolgung aktiv
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    if (isMouseTrackingActive) {
+      controls.enableRotate = false;
+      controls.enablePan = false;
+    } else if (viewModeRef.current === "3d") {
+      controls.enableRotate = true;
+      controls.enablePan = true;
+    }
+  }, [isMouseTrackingActive]);
+
   // Uniform-Arrays aktualisieren wenn sich Parameter aendern
   useEffect(() => {
     if (!uniformsRef.current || !waveUniformArrays) return;
@@ -159,6 +191,7 @@ export function useWaveAnimation({
   const sType = sourceUniforms?.sourceType;
   const sCount = sourceUniforms?.sourceCount;
   const sPositions = sourceUniforms?.sourcePositions;
+  const sSourceZ = sourceUniforms?.sourceZ;
 
   useEffect(() => {
     if (!uniformsRef.current) return;
@@ -174,6 +207,14 @@ export function useWaveAnimation({
         posArray[i].set(sPositions[i].x, sPositions[i].y);
       } else {
         posArray[i].set(0, 0);
+      }
+    }
+
+    // PROJ-16: sourceZ-Array in Uniform schreiben
+    if (sSourceZ) {
+      const zArray = u.u_sourceZ.value as number[];
+      for (let i = 0; i < 16; i++) {
+        zArray[i] = sSourceZ[i] ?? 0;
       }
     }
 
@@ -212,42 +253,62 @@ export function useWaveAnimation({
     for (let i = 0; i < sCount; i++) {
       const pos = sPositions[i];
       if (!pos) continue;
+      // PROJ-16: Z-Position des Markers entspricht der Quellenhoehe
+      const zPos = sSourceZ?.[i] ?? 0;
 
       if (sType === 0) {
         // POINT: kleine Kugel
         const geo = new THREE.SphereGeometry(0.12, 16, 16);
         const marker = new THREE.Mesh(geo, markerMaterial.clone());
-        marker.position.set(pos.x, pos.y, 0);
+        marker.position.set(pos.x, pos.y, zPos);
         group.add(marker);
+
+        // PROJ-16: Vertikale Linie von Ebene zum Marker (wenn Z != 0)
+        if (Math.abs(zPos) > 0.05) {
+          const stalkPts = [
+            new THREE.Vector3(pos.x, pos.y, 0),
+            new THREE.Vector3(pos.x, pos.y, zPos),
+          ];
+          const stalkGeo = new THREE.BufferGeometry().setFromPoints(stalkPts);
+          const stalkMat = new THREE.LineDashedMaterial({
+            color: 0xff6600,
+            dashSize: 0.15,
+            gapSize: 0.1,
+            linewidth: 1,
+          });
+          const stalkLine = new THREE.Line(stalkGeo, stalkMat);
+          stalkLine.computeLineDistances();
+          group.add(stalkLine);
+        }
       } else if (sType === 1) {
         // CIRCLE: Ring
         const curve = new THREE.EllipseCurve(0, 0, CIRCLE_RADIUS, CIRCLE_RADIUS, 0, Math.PI * 2, false, 0);
         const pts = curve.getPoints(64);
         const geo = new THREE.BufferGeometry().setFromPoints(
-          pts.map((p) => new THREE.Vector3(p.x + pos.x, p.y + pos.y, 0))
+          pts.map((p) => new THREE.Vector3(p.x + pos.x, p.y + pos.y, zPos))
         );
         const line = new THREE.Line(geo, lineMaterial.clone());
         group.add(line);
       } else if (sType === 2) {
         // BAR: vertikale Linie
         const pts = [
-          new THREE.Vector3(pos.x, pos.y - BAR_HALF_LENGTH, 0),
-          new THREE.Vector3(pos.x, pos.y + BAR_HALF_LENGTH, 0),
+          new THREE.Vector3(pos.x, pos.y - BAR_HALF_LENGTH, zPos),
+          new THREE.Vector3(pos.x, pos.y + BAR_HALF_LENGTH, zPos),
         ];
         const geo = new THREE.BufferGeometry().setFromPoints(pts);
         const line = new THREE.Line(geo, lineMaterial.clone());
         group.add(line);
       } else {
         // TRIANGLE: gleichseitiges Dreieck
-        const a = new THREE.Vector3(pos.x, pos.y + TRI_SIZE, 0);
-        const b = new THREE.Vector3(pos.x - TRI_SIZE * 0.866, pos.y - TRI_SIZE * 0.5, 0);
-        const c = new THREE.Vector3(pos.x + TRI_SIZE * 0.866, pos.y - TRI_SIZE * 0.5, 0);
+        const a = new THREE.Vector3(pos.x, pos.y + TRI_SIZE, zPos);
+        const b = new THREE.Vector3(pos.x - TRI_SIZE * 0.866, pos.y - TRI_SIZE * 0.5, zPos);
+        const c = new THREE.Vector3(pos.x + TRI_SIZE * 0.866, pos.y - TRI_SIZE * 0.5, zPos);
         const geo = new THREE.BufferGeometry().setFromPoints([a, b, c, a]);
         const line = new THREE.Line(geo, lineMaterial.clone());
         group.add(line);
       }
     }
-  }, [sType, sCount, sPositions]);
+  }, [sType, sCount, sPositions, sSourceZ]);
 
   // Reflexions-Uniforms und Wandmarker aktualisieren (PROJ-15)
   const refActive = reflectionConfig?.isActive ?? false;
@@ -1032,6 +1093,8 @@ export function useWaveAnimation({
       u_sourceType: { value: 0 },
       u_sourceCount: { value: 1 },
       u_sourcePositions: { value: defaultPositions },
+      // Quellenhoehe (PROJ-16)
+      u_sourceZ: { value: new Array(16).fill(0) },
       // Reflexion (PROJ-15)
       u_reflectionType: { value: 0 },
       u_reflectionWallX: { value: 3.0 },
@@ -1120,6 +1183,14 @@ export function useWaveAnimation({
     renderer.domElement.addEventListener("pointerdown", onPointerDown);
     renderer.domElement.addEventListener("pointerup", onPointerUp);
 
+    // PROJ-16: Mausverfolgung fuer Quellenhoehe
+    const onMouseMoveTracking = (e: MouseEvent) => {
+      if (isMouseTrackingActiveRef.current && onCanvasMouseMoveRef.current) {
+        onCanvasMouseMoveRef.current(e.movementY);
+      }
+    };
+    renderer.domElement.addEventListener("mousemove", onMouseMoveTracking);
+
     // Animationsloop
     fpsTimeRef.current = performance.now();
 
@@ -1171,6 +1242,7 @@ export function useWaveAnimation({
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
+      renderer.domElement.removeEventListener("mousemove", onMouseMoveTracking);
       renderer.dispose();
       geometry.dispose();
       material.dispose();

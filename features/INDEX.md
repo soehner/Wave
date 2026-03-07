@@ -19,8 +19,9 @@
 | PROJ-13 | In-App Physik-Erklärungen | In Review | 2026-03-04 |
 | PROJ-14 | Vergleichsmodus (Split-Screen) | In Review | 2026-03-04 |
 | PROJ-15 | Reflexion an losem und festem Ende | In Review | 2026-03-04 |
+| PROJ-16 | Mausgesteuerte Quellenhöhe (Z-Position) | In Review | 2026-03-07 |
 
-## Nächste verfügbare ID: PROJ-16
+## Nächste verfügbare ID: PROJ-17
 
 ## Empfohlene Implementierungsreihenfolge
 1. **PROJ-1** — Core Rendering Engine (Fundament, alle anderen hängen davon ab)

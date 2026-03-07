@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ChevronsLeft, ChevronsRight, RotateCcw, AlertTriangle, Info } from "lucide-react";
 import { ReflectionPanel } from "./ReflectionPanel";
+import { SourceHeightControl } from "./SourceHeightControl";
 import { SOURCE_TYPE_EXPLANATIONS } from "@/lib/physics-explanations";
 import type { UseReflectionReturn } from "@/hooks/useReflection";
 import {
@@ -52,6 +53,12 @@ interface SourcePanelProps {
   isLearnMode?: boolean;
   /** Reflexions-Hook (PROJ-15) */
   reflectionHook?: UseReflectionReturn;
+  /** Mausverfolgung aktiv? (PROJ-16) */
+  isMouseTrackingActive?: boolean;
+  /** Mausverfolgung umschalten (PROJ-16) */
+  onToggleMouseTracking?: () => void;
+  /** Top-Down-Ansicht aktiv? (PROJ-16) */
+  is2DView?: boolean;
 }
 
 export function SourcePanel({
@@ -60,6 +67,9 @@ export function SourcePanel({
   onOpenChange,
   isLearnMode,
   reflectionHook,
+  isMouseTrackingActive = false,
+  onToggleMouseTracking,
+  is2DView = false,
 }: SourcePanelProps) {
   const {
     config,
@@ -68,6 +78,10 @@ export function SourcePanel({
     setSourceSpacing,
     resetSources,
     isClipped,
+    sourceZ,
+    activeSourceIndex,
+    setActiveSourceIndex,
+    resetSourceZ,
   } = sourceHook;
 
   return (
@@ -211,6 +225,22 @@ export function SourcePanel({
                 <p className="text-xs text-yellow-800">
                   Einige Quellen liegen ausserhalb des Simulationsfeldes und werden an den Rand geclippt.
                 </p>
+              </div>
+            )}
+
+            {/* Quellenhoehe / Mausverfolgung (PROJ-16) */}
+            {onToggleMouseTracking && (
+              <div className="pt-3 border-t">
+                <SourceHeightControl
+                  activeSourceIndex={activeSourceIndex}
+                  sourceCount={config.count}
+                  activeZ={sourceZ[activeSourceIndex] ?? 0}
+                  isMouseTrackingActive={isMouseTrackingActive}
+                  onToggleMouseTracking={onToggleMouseTracking}
+                  onResetZ={() => resetSourceZ(activeSourceIndex)}
+                  onActiveSourceChange={setActiveSourceIndex}
+                  is2DView={is2DView}
+                />
               </div>
             )}
 
