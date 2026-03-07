@@ -220,10 +220,14 @@ export function computeWaveZ(
     const srcIdx = mouseWaveHistory.sourceIndex;
     const pos = sources.sourcePositions[srcIdx];
     if (pos) {
-      const trackDamping = uniforms.dampings[srcIdx] ?? 0;
+      // Mindest-Daempfung fuer Tuch-Effekt: Welle klingt zu den Raendern hin ab
+      const MIN_MOUSE_DAMPING = 0.15;
+      const trackDamping = Math.max(uniforms.dampings[srcIdx] ?? 0, MIN_MOUSE_DAMPING);
       const trackWaveSpeed = (uniforms.angularFreqs[srcIdx] ?? 1) / Math.max(uniforms.waveNumbers[srcIdx] ?? 1, 0.001);
 
       // Hilfsfunktion: Z-History mit linearer Interpolation abtasten
+      // Sanfter Uebergang am Pufferrand (letzte 20 Samples ausblenden)
+      const FADE_SAMPLES = 20;
       const sampleHistory = (dist: number): number => {
         const travelTime = dist / Math.max(trackWaveSpeed, 0.1);
         const samplesBackF = travelTime / Math.max(mouseWaveHistory.dt, 0.0001);
@@ -243,7 +247,12 @@ export function computeWaveZ(
         if (idx1 < 0) idx1 += 256;
         const z0 = mouseWaveHistory.buffer[idx0] ?? 0;
         const z1 = mouseWaveHistory.buffer[idx1] ?? 0;
-        return z0 + frac * (z1 - z0);
+        let val = z0 + frac * (z1 - z0);
+        // Sanftes Ausblenden am Pufferrand
+        if (s0 > 255 - FADE_SAMPLES) {
+          val *= (255 - s0) / FADE_SAMPLES;
+        }
+        return val;
       };
 
       // Einfallende History-Welle
