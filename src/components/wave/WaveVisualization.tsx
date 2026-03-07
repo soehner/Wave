@@ -129,6 +129,15 @@ export function WaveVisualization() {
     setProbes([]);
   }, []);
 
+  // PROJ-16: Mausverfolgung-Toggle mit Auto-Play
+  const handleToggleMouseTracking = useCallback(() => {
+    if (!mouseTrackingHook.isActive) {
+      // Beim Aktivieren: Animation starten damit Wellen sich ausbreiten
+      setIsPlaying(true);
+    }
+    mouseTrackingHook.toggle();
+  }, [mouseTrackingHook]);
+
   // PROJ-16: Maussteuerung fuer Quellenhoehe
   const handleCanvasMouseMove = useCallback((movementY: number) => {
     if (!mouseTrackingHook.isActive) return;
@@ -344,7 +353,7 @@ export function WaveVisualization() {
             isLearnMode={learnMode.isLearnMode}
             reflectionHook={reflectionHook}
             isMouseTrackingActive={mouseTrackingHook.isActive}
-            onToggleMouseTracking={mouseTrackingHook.toggle}
+            onToggleMouseTracking={handleToggleMouseTracking}
             is2DView={is2DView}
           />
           {/* Mittlerer Bereich: 3D-Canvas + optionales Schnittdiagramm */}

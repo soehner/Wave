@@ -128,9 +128,7 @@ export const waveVertexShader = /* glsl */ `
       }
 
       float r2d = distanceToSource(position.xy, u_sourcePositions[i]);
-      // 3D-Abstand: Einbeziehung der Quellenhoehe (PROJ-16)
-      float sz = u_sourceZ[i];
-      float r = sqrt(r2d * r2d + sz * sz);
+      float r = r2d;
       float envelope = exp(-u_dampings[i] * r);
 
       // Wellenfront: Welle breitet sich mit v = omega/k aus
@@ -141,9 +139,22 @@ export const waveVertexShader = /* glsl */ `
       z += u_amplitudes[i] * envelope * sin(u_waveNumbers[i] * r - u_angularFreqs[i] * u_time + u_phases[i]) * mask;
     }
 
+    // PROJ-16: Direkte Oberflaechendeformation durch Quellenhoehe
+    // Gauss-Bump an der Quellenposition proportional zu sourceZ
+    float bumpWidth = 0.8;
+    float bumpFactor = 1.0 / (2.0 * bumpWidth * bumpWidth);
+    for (int i = 0; i < 16; i++) {
+      if (i >= effectiveCount) break;
+      float sz = u_sourceZ[i];
+      if (abs(sz) > 0.01) {
+        float rd = distanceToSource(position.xy, u_sourcePositions[i]);
+        z += sz * exp(-rd * rd * bumpFactor);
+      }
+    }
+
     // Normierung: Summe der Originalquellen-Amplituden als theoretisches Maximum
     // Damit bleibt konstruktive Interferenz in der Farbskala sichtbar
-    float normFactor = max(sumMaxAmp, 0.001);
+    float normFactor = max(sumMaxAmp + 0.001, 0.001);
     v_displacement = clamp(z / normFactor, -1.0, 1.0);
 
     vec3 newPosition = vec3(position.x, position.y, z);

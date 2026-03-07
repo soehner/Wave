@@ -115,9 +115,7 @@ export function computeWaveZ(
       }
 
       const r2d = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
-      // 3D-Abstand: Einbeziehung der Quellenhoehe (PROJ-16)
-      const sz = sources.sourceZ?.[i] ?? 0;
-      const r = Math.sqrt(r2d * r2d + sz * sz);
+      const r = r2d;
       const envelope = Math.exp(-uniforms.dampings[i] * r);
 
       const waveSpeed = uniforms.angularFreqs[i] / Math.max(uniforms.waveNumbers[i], 0.001);
@@ -159,9 +157,7 @@ export function computeWaveZ(
       if (mirrorIsLeft === pointIsLeft) continue;
 
       const r2dMirror = distanceToSource(x, y, mirrorX, mirrorY, sources.sourceType);
-      // Spiegelquelle erbt Z-Hoehe der Originalquelle (PROJ-16)
-      const szMirror = sources.sourceZ?.[i] ?? 0;
-      const r = Math.sqrt(r2dMirror * r2dMirror + szMirror * szMirror);
+      const r = r2dMirror;
       const envelope = Math.exp(-uniforms.dampings[i] * r);
 
       const waveSpeed = uniforms.angularFreqs[i] / Math.max(uniforms.waveNumbers[i], 0.001);
@@ -181,6 +177,19 @@ export function computeWaveZ(
             uniforms.phases[i] + phaseShift
         ) *
         mask;
+    }
+  }
+
+  // PROJ-16: Direkte Oberflaechendeformation durch Quellenhoehe (Gauss-Bump)
+  const bumpWidth = 0.8;
+  const bumpFactor = 1 / (2 * bumpWidth * bumpWidth);
+  for (let i = 0; i < sources.sourceCount; i++) {
+    const sz = sources.sourceZ?.[i] ?? 0;
+    if (Math.abs(sz) > 0.01) {
+      const pos = sources.sourcePositions[i];
+      if (!pos) continue;
+      const rd = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
+      z += sz * Math.exp(-rd * rd * bumpFactor);
     }
   }
 
