@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { CrossSectionChart } from "./CrossSectionChart";
 import type { CrossSectionPoint } from "@/lib/wave-math";
 import type { SourceUniforms } from "@/lib/wave-sources";
@@ -35,6 +37,26 @@ export function CrossSectionPanel({
   chartData,
   sourceUniforms,
 }: CrossSectionPanelProps) {
+  // Z-Achsen-Skalierung: Auto oder Fixiert
+  const [isFixedZ, setIsFixedZ] = useState(false);
+  const [zMin, setZMin] = useState(-2);
+  const [zMax, setZMax] = useState(2);
+
+  const fixedYDomain = useMemo<[number, number] | undefined>(
+    () => (isFixedZ ? [zMin, zMax] : undefined),
+    [isFixedZ, zMin, zMax]
+  );
+
+  const handleZMinChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v)) setZMin(v);
+  }, []);
+
+  const handleZMaxChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v)) setZMax(v);
+  }, []);
+
   // Quellpositionen entlang der Schnittachse berechnen
   // Bei X-Schnitt (senkrecht zu X, variiert y): relevante Achse ist y
   // Bei Y-Schnitt (senkrecht zu Y, variiert x): relevante Achse ist x
@@ -76,6 +98,45 @@ export function CrossSectionPanel({
         {/* Trennlinie */}
         <div className="h-5 w-px bg-border" />
 
+        {/* Z-Achsen-Skalierung */}
+        <div className="flex items-center gap-2">
+          <Label className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+            Z-Achse:
+          </Label>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Auto</span>
+            <Switch
+              checked={isFixedZ}
+              onCheckedChange={setIsFixedZ}
+              aria-label="Z-Achse fixieren"
+              className="scale-75"
+            />
+            <span className="text-xs text-muted-foreground">Fixiert</span>
+          </div>
+          {isFixedZ && (
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                value={zMin}
+                onChange={handleZMinChange}
+                className="h-6 w-16 text-xs px-1.5"
+                aria-label="Z-Achse Minimum"
+              />
+              <span className="text-xs text-muted-foreground">–</span>
+              <Input
+                type="number"
+                value={zMax}
+                onChange={handleZMaxChange}
+                className="h-6 w-16 text-xs px-1.5"
+                aria-label="Z-Achse Maximum"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Trennlinie */}
+        <div className="h-5 w-px bg-border" />
+
         {/* Positions-Slider */}
         <div className="flex items-center gap-3 flex-1 min-w-0 max-w-sm">
           <Label
@@ -106,6 +167,7 @@ export function CrossSectionPanel({
           data={chartData}
           orientation={orientation}
           sourcePositionsAlongAxis={sourcePositionsAlongAxis}
+          fixedYDomain={fixedYDomain}
         />
       </div>
     </div>

@@ -462,7 +462,7 @@ export function computeCrossSectionData(
   t: number,
   uniforms: WaveUniformArrays,
   sources: SourceUniforms,
-  numPoints: number = 200,
+  numPoints: number = 400,
   reflection?: ReflectionParams,
   mouseWaveHistory?: MouseWaveHistory
 ): CrossSectionPoint[] {

@@ -28,6 +28,8 @@ interface CrossSectionChartProps {
   orientation: "x" | "y";
   /** Quellpositionen entlang der Schnittachse (fuer gestrichelte Linien) */
   sourcePositionsAlongAxis: number[];
+  /** Feste Y-Achsen-Grenzen [min, max] -- wenn undefined, automatisch */
+  fixedYDomain?: [number, number];
 }
 
 const chartConfig: ChartConfig = {
@@ -45,9 +47,12 @@ export function CrossSectionChart({
   data,
   orientation,
   sourcePositionsAlongAxis,
+  fixedYDomain,
 }: CrossSectionChartProps) {
-  // Y-Achsen-Domain automatisch berechnen
+  // Y-Achsen-Domain: fixiert oder automatisch berechnet
   const yDomain = useMemo(() => {
+    if (fixedYDomain) return fixedYDomain;
+
     if (data.length === 0) return [-1, 1] as [number, number];
 
     let min = 0;
@@ -61,7 +66,7 @@ export function CrossSectionChart({
     const range = max - min;
     const padding = Math.max(range * 0.1, 0.05);
     return [min - padding, max + padding] as [number, number];
-  }, [data]);
+  }, [data, fixedYDomain]);
 
   const axisLabel = orientation === "x" ? "y [m]" : "x [m]";
 
@@ -140,7 +145,7 @@ export function CrossSectionChart({
         />
 
         <Line
-          type="monotone"
+          type="natural"
           dataKey="z"
           stroke={CROSS_SECTION_COLOR}
           strokeWidth={2}
