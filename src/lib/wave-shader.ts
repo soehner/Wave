@@ -14,6 +14,11 @@
  *   u_reflectionType: 0 = aus, 1 = festes Ende (Phase +pi), 2 = loses Ende (Phase +0)
  *   u_reflectionWallX: X-Position der Reflexionswand
  *   u_reflectionDisplayMode: 0 = total (einfallend+reflektiert), 1 = nur einfallend, 2 = nur reflektiert
+ *
+ * PROJ-16: Mausgesteuerte Wellenausbreitung
+ *   Bei aktivem Mouse-Tracking wird die Sinuswelle der gesteuerten Quelle
+ *   deaktiviert. Stattdessen propagiert die Z-History (Ringpuffer) als Welle
+ *   nach aussen. Nur Daempfung bleibt als Parameter relevant.
  */
 export const waveVertexShader = /* glsl */ `
   uniform float u_time;
@@ -35,6 +40,12 @@ export const waveVertexShader = /* glsl */ `
   uniform int u_reflectionType;         // 0=aus, 1=festes Ende, 2=loses Ende
   uniform float u_reflectionWallX;      // X-Position der Wand
   uniform int u_reflectionDisplayMode;  // 0=total, 1=nur einfallend, 2=nur reflektiert
+
+  // PROJ-16: Mausgesteuerte Wellenausbreitung (Z-History Ringpuffer)
+  uniform float u_zHistory[256];       // Ringpuffer der letzten 256 Z-Werte
+  uniform int u_zHistoryHead;          // Index des juengsten Samples
+  uniform float u_zHistoryDt;          // Zeitintervall zwischen Samples (s)
+  uniform int u_mouseTrackingSource;   // -1 = aus, 0..7 = aktive Quelle
 
   varying float v_displacement;
 
@@ -94,15 +105,17 @@ export const waveVertexShader = /* glsl */ `
     }
 
     // BUG-2 Fix: Normierung nur mit Originalquellen-Amplituden
-    // Spiegelquellen duerfen nicht mitgezaehlt werden, sonst wird
-    // die Amplitude bei stehenden Wellen halbiert
     for (int i = 0; i < 16; i++) {
       if (i >= originalCount) break;
       sumMaxAmp += u_amplitudes[i];
     }
 
+    // Sinuswellen-Superposition (fuer alle Quellen AUSSER mausgesteuerte)
     for (int i = 0; i < 16; i++) {
       if (i >= effectiveCount) break;
+
+      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle ueberspringen
+      if (u_mouseTrackingSource >= 0 && i == u_mouseTrackingSource) continue;
 
       // Bestimme ob diese Quelle einfallend oder reflektiert ist
       bool isReflected = (u_reflectionType > 0) && (i >= originalCount);
@@ -112,17 +125,12 @@ export const waveVertexShader = /* glsl */ `
       if (u_reflectionDisplayMode == 2 && !isReflected) continue; // nur reflektiert
 
       // BUG-3 Fix: Wand-Clipping -- Wellen nur auf der Quellenseite der Wand
-      // Einfallende Welle: nur auf der gleichen Seite wie die Originalquelle
-      // Reflektierte Welle: nur auf der gegenueberliegenden Seite der Spiegelquelle
-      //   (= gleiche Seite wie die Originalquelle)
       if (u_reflectionType > 0) {
         bool sourceIsLeft = u_sourcePositions[i].x < u_reflectionWallX;
         bool vertexIsLeft = position.x < u_reflectionWallX;
         if (isReflected) {
-          // Spiegelquelle ist auf der Gegenseite -> reflektierte Welle auf der Originalseite
           if (sourceIsLeft == vertexIsLeft) continue;
         } else {
-          // Originalquelle -> Welle nur auf ihrer Seite
           if (sourceIsLeft != vertexIsLeft) continue;
         }
       }
@@ -139,12 +147,12 @@ export const waveVertexShader = /* glsl */ `
       z += u_amplitudes[i] * envelope * sin(u_waveNumbers[i] * r - u_angularFreqs[i] * u_time + u_phases[i]) * mask;
     }
 
-    // PROJ-16: Direkte Oberflaechendeformation durch Quellenhoehe
-    // Gauss-Bump an der Quellenposition proportional zu sourceZ
+    // PROJ-16: Gauss-Bump fuer Quellen mit Z != 0 (nicht fuer mausgesteuerte Quelle)
     float bumpWidth = 0.8;
     float bumpFactor = 1.0 / (2.0 * bumpWidth * bumpWidth);
     for (int i = 0; i < 16; i++) {
       if (i >= effectiveCount) break;
+      if (u_mouseTrackingSource >= 0 && i == u_mouseTrackingSource) continue;
       float sz = u_sourceZ[i];
       if (abs(sz) > 0.01) {
         float rd = distanceToSource(position.xy, u_sourcePositions[i]);
@@ -152,9 +160,51 @@ export const waveVertexShader = /* glsl */ `
       }
     }
 
-    // Normierung: Summe der Originalquellen-Amplituden als theoretisches Maximum
-    // Damit bleibt konstruktive Interferenz in der Farbskala sichtbar
-    float normFactor = max(sumMaxAmp + 0.001, 0.001);
+    // PROJ-16: Mausgesteuerte Wellenausbreitung aus Z-History-Ringpuffer
+    // Jeder Oberflaechenpunkt empfaengt den Z-Wert, der zum Zeitpunkt
+    // (jetzt - Laufzeit) an der Quelle herrschte: z(r) = zHistory(t - r/v) * e^(-d*r)
+    if (u_mouseTrackingSource >= 0) {
+      // Quellenparameter via Loop ermitteln (GLSL ES 1.0 kompatibel)
+      vec2 trackPos = vec2(0.0);
+      float trackDamping = 0.0;
+      float trackWaveSpeed = 1.0;
+      for (int i = 0; i < 16; i++) {
+        if (i == u_mouseTrackingSource) {
+          trackPos = u_sourcePositions[i];
+          trackDamping = u_dampings[i];
+          trackWaveSpeed = u_angularFreqs[i] / max(u_waveNumbers[i], 0.001);
+          break;
+        }
+      }
+
+      float r = distanceToSource(position.xy, trackPos);
+      float travelTime = r / max(trackWaveSpeed, 0.1);
+      int samplesBack = int(travelTime / max(u_zHistoryDt, 0.0001));
+
+      if (samplesBack >= 0 && samplesBack < 256) {
+        // Ring-Index berechnen
+        int lookupIdx = u_zHistoryHead - samplesBack;
+        if (lookupIdx < 0) lookupIdx += 256;
+
+        // Loop-basierte Suche (GLSL ES 1.0: Array-Index muss Loop-Variable sein)
+        float historicZ = 0.0;
+        for (int j = 0; j < 256; j++) {
+          if (j == lookupIdx) {
+            historicZ = u_zHistory[j];
+            break;
+          }
+        }
+
+        float envelope = exp(-trackDamping * r);
+        z += historicZ * envelope;
+      }
+    }
+
+    // Normierung
+    float normFactor = max(sumMaxAmp, 0.001);
+    if (u_mouseTrackingSource >= 0) {
+      normFactor = max(normFactor, 5.0);
+    }
     v_displacement = clamp(z / normFactor, -1.0, 1.0);
 
     vec3 newPosition = vec3(position.x, position.y, z);

@@ -31,6 +31,10 @@ const getWebGLServerSnapshot = () => true;
 const GRID_SEGMENTS = 128;
 const PLANE_SIZE = 10;
 
+// PROJ-16: Z-History Ringpuffer-Konstanten
+const Z_HISTORY_SIZE = 256;
+const Z_HISTORY_DT = 0.02; // Sekunden zwischen Samples (50 Hz)
+
 const DEFAULT_CAMERA_POSITION = new THREE.Vector3(8, 8, 6);
 const DEFAULT_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
 
@@ -69,6 +73,8 @@ interface UseWaveAnimationOptions {
   isMouseTrackingActive?: boolean;
   /** Callback fuer Mausbewegung ueber Canvas (PROJ-16) */
   onCanvasMouseMove?: (movementY: number) => void;
+  /** Index der mausgesteuerten Quelle (-1 = aus) (PROJ-16) */
+  mouseTrackingSourceIndex?: number;
 }
 
 export function useWaveAnimation({
@@ -91,6 +97,7 @@ export function useWaveAnimation({
   mirrorSources = [],
   isMouseTrackingActive = false,
   onCanvasMouseMove,
+  mouseTrackingSourceIndex = -1,
 }: UseWaveAnimationOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -153,6 +160,13 @@ export function useWaveAnimation({
   // PROJ-16: Refs fuer Mausverfolgung-Callbacks
   const isMouseTrackingActiveRef = useRef(isMouseTrackingActive);
   const onCanvasMouseMoveRef = useRef(onCanvasMouseMove);
+  const mouseTrackingSourceIndexRef = useRef(mouseTrackingSourceIndex);
+
+  // PROJ-16: Z-History Ringpuffer fuer mausgesteuerte Wellenausbreitung
+  const zHistoryBufferRef = useRef(new Float32Array(Z_HISTORY_SIZE).fill(0));
+  const zHistoryHeadRef = useRef(0);
+  const zHistoryLastTimeRef = useRef(0);
+  const zHistoryPrevSourceRef = useRef(-1);
 
   useEffect(() => {
     isMouseTrackingActiveRef.current = isMouseTrackingActive;
@@ -161,6 +175,10 @@ export function useWaveAnimation({
   useEffect(() => {
     onCanvasMouseMoveRef.current = onCanvasMouseMove;
   }, [onCanvasMouseMove]);
+
+  useEffect(() => {
+    mouseTrackingSourceIndexRef.current = mouseTrackingSourceIndex;
+  }, [mouseTrackingSourceIndex]);
 
 
   // PROJ-16: OrbitControls deaktivieren wenn Mausverfolgung aktiv
@@ -1095,6 +1113,11 @@ export function useWaveAnimation({
       u_sourcePositions: { value: defaultPositions },
       // Quellenhoehe (PROJ-16)
       u_sourceZ: { value: new Array(16).fill(0) },
+      // Z-History Ringpuffer fuer mausgesteuerte Wellenausbreitung (PROJ-16)
+      u_zHistory: { value: new Array(Z_HISTORY_SIZE).fill(0) },
+      u_zHistoryHead: { value: 0 },
+      u_zHistoryDt: { value: Z_HISTORY_DT },
+      u_mouseTrackingSource: { value: -1 },
       // Reflexion (PROJ-15)
       u_reflectionType: { value: 0 },
       u_reflectionWallX: { value: 3.0 },
@@ -1221,6 +1244,43 @@ export function useWaveAnimation({
         uniforms.u_time.value = timeRef.current;
       }
       prevTimestampRef.current = isPlayingRef.current ? timestamp : 0;
+
+      // PROJ-16: Z-History Ringpuffer aktualisieren
+      const currentMouseSource = mouseTrackingSourceIndexRef.current;
+      uniforms.u_mouseTrackingSource.value = currentMouseSource;
+
+      if (currentMouseSource >= 0) {
+        // Bei frischer Aktivierung: Puffer leeren
+        if (zHistoryPrevSourceRef.current < 0) {
+          zHistoryBufferRef.current.fill(0);
+          zHistoryHeadRef.current = 0;
+          zHistoryLastTimeRef.current = timeRef.current;
+          const arr = uniforms.u_zHistory.value as number[];
+          for (let i = 0; i < Z_HISTORY_SIZE; i++) arr[i] = 0;
+        }
+
+        if (isPlayingRef.current) {
+          const srcIdx = currentMouseSource;
+          const currentZ = (uniforms.u_sourceZ.value as number[])[srcIdx] ?? 0;
+          const elapsed = timeRef.current - zHistoryLastTimeRef.current;
+          const samplesToWrite = Math.min(Math.floor(elapsed / Z_HISTORY_DT), Z_HISTORY_SIZE);
+
+          const buf = zHistoryBufferRef.current;
+          const uniformArr = uniforms.u_zHistory.value as number[];
+
+          for (let s = 0; s < samplesToWrite; s++) {
+            buf[zHistoryHeadRef.current] = currentZ;
+            uniformArr[zHistoryHeadRef.current] = currentZ;
+            zHistoryHeadRef.current = (zHistoryHeadRef.current + 1) % Z_HISTORY_SIZE;
+            zHistoryLastTimeRef.current += Z_HISTORY_DT;
+          }
+
+          // Head zeigt auf das juengste geschriebene Sample
+          uniforms.u_zHistoryHead.value =
+            (zHistoryHeadRef.current - 1 + Z_HISTORY_SIZE) % Z_HISTORY_SIZE;
+        }
+      }
+      zHistoryPrevSourceRef.current = currentMouseSource;
 
       // Zeitanzeige-Callback ca. 10x pro Sekunde (alle ~100ms)
       if (onTimeUpdateRef.current && lastFrameTimestampRef.current > 0) {

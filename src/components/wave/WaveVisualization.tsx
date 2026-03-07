@@ -211,6 +211,7 @@ export function WaveVisualization() {
       mirrorSources: reflectionHook.mirrorSources,
       isMouseTrackingActive: mouseTrackingHook.isActive,
       onCanvasMouseMove: handleCanvasMouseMove,
+      mouseTrackingSourceIndex: mouseTrackingHook.isActive ? waveSourcesHook.activeSourceIndex : -1,
     });
 
   // Sonden-Zeitverlaufsdaten
