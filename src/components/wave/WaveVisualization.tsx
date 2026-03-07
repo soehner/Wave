@@ -181,6 +181,9 @@ export function WaveVisualization() {
     [reflectionHook.config.isActive, reflectionHook.config.wallX, reflectionHook.config.endType, reflectionHook.config.displayMode]
   );
 
+  // PROJ-16: MouseWaveHistory fuer CPU-seitige Berechnungen
+  const mouseTrackingSourceIdx = mouseTrackingHook.isActive ? waveSourcesHook.activeSourceIndex : -1;
+
   const crossSectionConfig = useMemo<CrossSectionPlane3DConfig>(
     () => ({
       isActive: csIsActive,
@@ -190,7 +193,7 @@ export function WaveVisualization() {
     [csIsActive, csOrientation, csPosition]
   );
 
-  const { containerRef, resetCamera, resetTime, stepFrame, webglSupported, timeRef } =
+  const { containerRef, resetCamera, resetTime, stepFrame, webglSupported, timeRef, zHistoryBufferRef, zHistoryHeadRef } =
     useWaveAnimation({
       isPlaying,
       onFpsUpdate: handleFpsUpdate,
@@ -211,7 +214,7 @@ export function WaveVisualization() {
       mirrorSources: reflectionHook.mirrorSources,
       isMouseTrackingActive: mouseTrackingHook.isActive,
       onCanvasMouseMove: handleCanvasMouseMove,
-      mouseTrackingSourceIndex: mouseTrackingHook.isActive ? waveSourcesHook.activeSourceIndex : -1,
+      mouseTrackingSourceIndex: mouseTrackingSourceIdx,
     });
 
   // Sonden-Zeitverlaufsdaten
@@ -222,6 +225,9 @@ export function WaveVisualization() {
     sourceUniforms: waveSourcesHook.sourceUniforms,
     isPlaying,
     reflection: reflectionParams,
+    mouseTrackingSourceIndex: mouseTrackingSourceIdx,
+    zHistoryBufferRef,
+    zHistoryHeadRef,
   });
 
   // Preset-Laden soll auch die Zeit zuruecksetzen (Spezifikation: "nur Parameter und Zeit werden zurueckgesetzt")
@@ -257,6 +263,9 @@ export function WaveVisualization() {
     orientation: csOrientation,
     position: csPosition,
     reflection: reflectionParams,
+    mouseTrackingSourceIndex: mouseTrackingSourceIdx,
+    zHistoryBufferRef,
+    zHistoryHeadRef,
   });
 
   // Intensitaetsschirm-Daten (PROJ-9)
@@ -269,6 +278,9 @@ export function WaveVisualization() {
     screenX,
     intensityMode,
     reflection: reflectionParams,
+    mouseTrackingSourceIndex: mouseTrackingSourceIdx,
+    zHistoryBufferRef,
+    zHistoryHeadRef,
   });
 
   const toggleScreen = useCallback(() => {

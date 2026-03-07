@@ -1321,5 +1321,8 @@ export function useWaveAnimation({
     webglSupported: isWebGLSupported,
     /** Geteilte Zeitreferenz fuer die CPU-seitige Schnittberechnung */
     timeRef,
+    /** PROJ-16: Z-History Ringpuffer fuer CPU-seitige Berechnung */
+    zHistoryBufferRef,
+    zHistoryHeadRef,
   };
 }

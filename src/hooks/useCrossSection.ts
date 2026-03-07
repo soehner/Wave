@@ -26,6 +26,12 @@ export interface UseCrossSectionOptions {
   position: number;
   /** Reflexionsparameter (PROJ-15) */
   reflection?: ReflectionParams;
+  /** PROJ-16: Index der mausgesteuerten Quelle (-1 = aus) */
+  mouseTrackingSourceIndex?: number;
+  /** PROJ-16: Z-History Ringpuffer Ref */
+  zHistoryBufferRef?: React.RefObject<Float32Array>;
+  /** PROJ-16: Z-History Head-Index Ref */
+  zHistoryHeadRef?: React.RefObject<number>;
 }
 
 export interface UseCrossSectionReturn {
@@ -49,6 +55,9 @@ export function useCrossSection({
   orientation,
   position,
   reflection,
+  mouseTrackingSourceIndex = -1,
+  zHistoryBufferRef,
+  zHistoryHeadRef,
 }: UseCrossSectionOptions): UseCrossSectionReturn {
   const [rawChartData, setRawChartData] = useState<CrossSectionPoint[]>([]);
 
@@ -88,6 +97,11 @@ export function useCrossSection({
     reflectionRef.current = reflection;
   }, [reflection]);
 
+  const mouseTrackingSourceIndexRef = useRef(mouseTrackingSourceIndex);
+  useEffect(() => {
+    mouseTrackingSourceIndexRef.current = mouseTrackingSourceIndex;
+  }, [mouseTrackingSourceIndex]);
+
   // Animation-Loop fuer Datenberechnung (~30 FPS)
   useEffect(() => {
     if (!isActive) return;
@@ -108,6 +122,11 @@ export function useCrossSection({
 
       const t = timeRef.current ?? 0;
 
+      const mIdx = mouseTrackingSourceIndexRef.current;
+      const mwh = mIdx >= 0 && zHistoryBufferRef && zHistoryHeadRef
+        ? { sourceIndex: mIdx, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+        : undefined;
+
       const data = computeCrossSectionData(
         orientationRef.current,
         positionRef.current,
@@ -115,7 +134,8 @@ export function useCrossSection({
         waveUniformsRef.current,
         sourceUniformsRef.current,
         200,
-        reflectionRef.current
+        reflectionRef.current,
+        mwh
       );
 
       setRawChartData(data);
@@ -136,6 +156,11 @@ export function useCrossSection({
 
     const id = requestAnimationFrame(() => {
       const t = timeRef.current ?? 0;
+      const mIdx2 = mouseTrackingSourceIndexRef.current;
+      const mwh2 = mIdx2 >= 0 && zHistoryBufferRef && zHistoryHeadRef
+        ? { sourceIndex: mIdx2, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+        : undefined;
+
       const data = computeCrossSectionData(
         orientation,
         position,
@@ -143,7 +168,8 @@ export function useCrossSection({
         waveUniformArrays,
         sourceUniforms,
         200,
-        reflection
+        reflection,
+        mwh2
       );
       setRawChartData(data);
     });

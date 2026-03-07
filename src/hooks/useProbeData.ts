@@ -36,6 +36,12 @@ export interface UseProbeDataOptions {
   isPlaying: boolean;
   /** Reflexionsparameter (PROJ-15) */
   reflection?: ReflectionParams;
+  /** PROJ-16: Index der mausgesteuerten Quelle (-1 = aus) */
+  mouseTrackingSourceIndex?: number;
+  /** PROJ-16: Z-History Ringpuffer Ref */
+  zHistoryBufferRef?: React.RefObject<Float32Array>;
+  /** PROJ-16: Z-History Head-Index Ref */
+  zHistoryHeadRef?: React.RefObject<number>;
 }
 
 export interface UseProbeDataReturn {
@@ -54,6 +60,9 @@ export function useProbeData({
   sourceUniforms,
   isPlaying,
   reflection,
+  mouseTrackingSourceIndex = -1,
+  zHistoryBufferRef,
+  zHistoryHeadRef,
 }: UseProbeDataOptions): UseProbeDataReturn {
   const [chartData, setChartData] = useState<ProbeDataPoint[]>([]);
 
@@ -71,6 +80,9 @@ export function useProbeData({
 
   const reflectionRef = useRef(reflection);
   useEffect(() => { reflectionRef.current = reflection; }, [reflection]);
+
+  const mouseTrackingSourceIndexRef = useRef(mouseTrackingSourceIndex);
+  useEffect(() => { mouseTrackingSourceIndexRef.current = mouseTrackingSourceIndex; }, [mouseTrackingSourceIndex]);
 
   // Puffer leeren wenn sich Sonden aendern (neue Sonde / entfernt)
   const probeIds = probes.map((p) => p.id).join(",");
@@ -103,13 +115,19 @@ export function useProbeData({
 
       const point: ProbeDataPoint = { t: Math.round(t * 1000) / 1000 };
       for (const probe of currentProbes) {
+        const mIdx = mouseTrackingSourceIndexRef.current;
+        const mwh = mIdx >= 0 && zHistoryBufferRef && zHistoryHeadRef
+          ? { sourceIndex: mIdx, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+          : undefined;
+
         point[probe.id] = computeWaveZ(
           probe.x,
           probe.y,
           t,
           waveUniformsRef.current!,
           sourceUniformsRef.current!,
-          reflectionRef.current
+          reflectionRef.current,
+          mwh
         );
       }
 

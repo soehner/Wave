@@ -31,6 +31,12 @@ export interface UseIntensityScreenOptions {
   intensityMode: IntensityMode;
   /** Reflexionsparameter (PROJ-15) */
   reflection?: ReflectionParams;
+  /** PROJ-16: Index der mausgesteuerten Quelle (-1 = aus) */
+  mouseTrackingSourceIndex?: number;
+  /** PROJ-16: Z-History Ringpuffer Ref */
+  zHistoryBufferRef?: React.RefObject<Float32Array>;
+  /** PROJ-16: Z-History Head-Index Ref */
+  zHistoryHeadRef?: React.RefObject<number>;
 }
 
 export interface UseIntensityScreenReturn {
@@ -57,6 +63,9 @@ export function useIntensityScreen({
   screenX,
   intensityMode,
   reflection,
+  mouseTrackingSourceIndex = -1,
+  zHistoryBufferRef,
+  zHistoryHeadRef,
 }: UseIntensityScreenOptions): UseIntensityScreenReturn {
   const [rawChartData, setRawChartData] = useState<IntensityPoint[]>([]);
 
@@ -86,6 +95,9 @@ export function useIntensityScreen({
   const reflectionRef = useRef(reflection);
   useEffect(() => { reflectionRef.current = reflection; }, [reflection]);
 
+  const mouseTrackingSourceIndexRef = useRef(mouseTrackingSourceIndex);
+  useEffect(() => { mouseTrackingSourceIndexRef.current = mouseTrackingSourceIndex; }, [mouseTrackingSourceIndex]);
+
   // Ringpuffer leeren wenn Modus wechselt oder Schirm de-/aktiviert wird
   useEffect(() => {
     ringBufferRef.current = [];
@@ -114,9 +126,14 @@ export function useIntensityScreen({
       const uniforms = waveUniformsRef.current;
       const sources = sourceUniformsRef.current;
 
+      const mIdx = mouseTrackingSourceIndexRef.current;
+      const mwh = mIdx >= 0 && zHistoryBufferRef && zHistoryHeadRef
+        ? { sourceIndex: mIdx, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+        : undefined;
+
       if (intensityModeRef.current === "instantaneous") {
         // Instantaner Modus: direkte Berechnung
-        const data = calculateIntensityProfile(sx, t, uniforms, sources, NUM_POINTS, reflectionRef.current);
+        const data = calculateIntensityProfile(sx, t, uniforms, sources, NUM_POINTS, reflectionRef.current, mwh);
         setRawChartData(data);
       } else {
         // Zeitgemittelter Modus: z^2-Werte in Ringpuffer sammeln
@@ -124,7 +141,7 @@ export function useIntensityScreen({
         const frameData: number[] = [];
         for (let i = 0; i < NUM_POINTS; i++) {
           const y = -FIELD_HALF_SIZE + i * step;
-          const z = computeWaveZ(sx, y, t, uniforms, sources, reflectionRef.current);
+          const z = computeWaveZ(sx, y, t, uniforms, sources, reflectionRef.current, mwh);
           frameData.push(z * z);
         }
 
@@ -158,7 +175,12 @@ export function useIntensityScreen({
     const id = requestAnimationFrame(() => {
       const t = timeRef.current ?? 0;
       if (intensityModeRef.current === "instantaneous") {
-        const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS, reflection);
+        const mIdx2 = mouseTrackingSourceIndexRef.current;
+        const mwh2 = mIdx2 >= 0 && zHistoryBufferRef && zHistoryHeadRef
+          ? { sourceIndex: mIdx2, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+          : undefined;
+
+        const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS, reflection, mwh2);
         setRawChartData(data);
       } else {
         // Bei Pause im zeitgemittelten Modus: zeige vorhandene Daten oder berechne instantan
@@ -166,7 +188,11 @@ export function useIntensityScreen({
           const data = calculateTimeAveragedIntensity(ringBufferRef.current, NUM_POINTS, screenX);
           setRawChartData(data);
         } else {
-          const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS, reflection);
+          const mIdx3 = mouseTrackingSourceIndexRef.current;
+          const mwh3 = mIdx3 >= 0 && zHistoryBufferRef && zHistoryHeadRef
+            ? { sourceIndex: mIdx3, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+            : undefined;
+          const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS, reflection, mwh3);
           setRawChartData(data);
         }
       }

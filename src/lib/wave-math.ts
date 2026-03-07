@@ -72,6 +72,18 @@ function distanceToSource(
   }
 }
 
+/** Z-History fuer mausgesteuerte Wellenausbreitung (PROJ-16, CPU-seitig) */
+export interface MouseWaveHistory {
+  /** Index der mausgesteuerten Quelle (0..7) */
+  sourceIndex: number;
+  /** Ringpuffer der letzten 256 Z-Werte */
+  buffer: Float32Array;
+  /** Index des juengsten Samples im Ringpuffer */
+  head: number;
+  /** Zeitintervall zwischen Samples in Sekunden */
+  dt: number;
+}
+
 /** Reflexions-Parameter fuer CPU-seitige Berechnung */
 export interface ReflectionParams {
   isActive: boolean;
@@ -97,13 +109,17 @@ export function computeWaveZ(
   t: number,
   uniforms: WaveUniformArrays,
   sources: SourceUniforms,
-  reflection?: ReflectionParams
+  reflection?: ReflectionParams,
+  mouseWaveHistory?: MouseWaveHistory
 ): number {
   let z = 0;
 
   // Einfallende Welle berechnen
   if (!reflection?.isActive || reflection.displayMode !== "reflected") {
     for (let i = 0; i < sources.sourceCount; i++) {
+      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle ueberspringen
+      if (mouseWaveHistory && i === mouseWaveHistory.sourceIndex) continue;
+
       const pos = sources.sourcePositions[i];
       if (!pos) continue;
 
@@ -184,12 +200,35 @@ export function computeWaveZ(
   const bumpWidth = 0.8;
   const bumpFactor = 1 / (2 * bumpWidth * bumpWidth);
   for (let i = 0; i < sources.sourceCount; i++) {
+    // Gauss-Bump fuer mausgesteuerte Quelle ueberspringen (History ersetzt ihn)
+    if (mouseWaveHistory && i === mouseWaveHistory.sourceIndex) continue;
     const sz = sources.sourceZ?.[i] ?? 0;
     if (Math.abs(sz) > 0.01) {
       const pos = sources.sourcePositions[i];
       if (!pos) continue;
       const rd = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
       z += sz * Math.exp(-rd * rd * bumpFactor);
+    }
+  }
+
+  // PROJ-16: Mausgesteuerte Wellenausbreitung aus Z-History-Ringpuffer
+  if (mouseWaveHistory) {
+    const srcIdx = mouseWaveHistory.sourceIndex;
+    const pos = sources.sourcePositions[srcIdx];
+    if (pos) {
+      const trackDamping = uniforms.dampings[srcIdx] ?? 0;
+      const trackWaveSpeed = (uniforms.angularFreqs[srcIdx] ?? 1) / Math.max(uniforms.waveNumbers[srcIdx] ?? 1, 0.001);
+      const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
+      const travelTime = r / Math.max(trackWaveSpeed, 0.1);
+      const samplesBack = Math.floor(travelTime / Math.max(mouseWaveHistory.dt, 0.0001));
+
+      if (samplesBack >= 0 && samplesBack < 256) {
+        let lookupIdx = mouseWaveHistory.head - samplesBack;
+        if (lookupIdx < 0) lookupIdx += 256;
+        const historicZ = mouseWaveHistory.buffer[lookupIdx] ?? 0;
+        const envelope = Math.exp(-trackDamping * r);
+        z += historicZ * envelope;
+      }
     }
   }
 
@@ -228,7 +267,8 @@ export function calculateIntensityProfile(
   uniforms: WaveUniformArrays,
   sources: SourceUniforms,
   numPoints: number = 200,
-  reflection?: ReflectionParams
+  reflection?: ReflectionParams,
+  mouseWaveHistory?: MouseWaveHistory
 ): IntensityPoint[] {
   const step = (2 * FIELD_HALF_SIZE) / (numPoints - 1);
 
@@ -238,7 +278,7 @@ export function calculateIntensityProfile(
 
   for (let i = 0; i < numPoints; i++) {
     const y = -FIELD_HALF_SIZE + i * step;
-    const z = computeWaveZ(screenX, y, t, uniforms, sources, reflection);
+    const z = computeWaveZ(screenX, y, t, uniforms, sources, reflection, mouseWaveHistory);
     yPositions.push(y);
     rawIntensities.push(z * z);
   }
@@ -379,7 +419,8 @@ export function computeCrossSectionData(
   uniforms: WaveUniformArrays,
   sources: SourceUniforms,
   numPoints: number = 200,
-  reflection?: ReflectionParams
+  reflection?: ReflectionParams,
+  mouseWaveHistory?: MouseWaveHistory
 ): CrossSectionPoint[] {
   const points: CrossSectionPoint[] = [];
   const step = (2 * FIELD_HALF_SIZE) / (numPoints - 1);
@@ -394,7 +435,7 @@ export function computeCrossSectionData(
 
     points.push({
       coord,
-      z: computeWaveZ(x, y, t, uniforms, sources, reflection),
+      z: computeWaveZ(x, y, t, uniforms, sources, reflection, mouseWaveHistory),
     });
   }
 
