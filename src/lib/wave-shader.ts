@@ -237,20 +237,12 @@ export const waveVertexShader = /* glsl */ `
         if (mirrorIsLeft != vtxIsLeft2) {
           float rMirror = distanceToSource(position.xy, mirrorPos);
           float samplesBackMF = rMirror / max(trackWaveSpeed, 0.1) / max(u_zHistoryDt, 0.0001);
-          float clampedMF = clamp(samplesBackMF, 0.0, 255.0);
-          int sm0 = int(floor(clampedMF));
           float reflSign = (u_reflectionType == 1) ? -1.0 : 1.0;
 
-          if (sm0 >= 255) {
-            int mOldIdx = u_zHistoryHead - 255;
-            if (mOldIdx < 0) mOldIdx += 256;
-            float mOldVal = 0.0;
-            for (int j = 0; j < 256; j++) {
-              if (j == mOldIdx) mOldVal = u_zHistory[j];
-            }
-            z += reflSign * mOldVal;
-          } else {
-            float fracM = clampedMF - float(sm0);
+          // Reflektierte Welle: 0 wenn Puffer ueberschritten (Welle noch nicht angekommen)
+          if (samplesBackMF >= 0.0 && samplesBackMF < 255.0) {
+            int sm0 = int(floor(samplesBackMF));
+            float fracM = samplesBackMF - float(sm0);
             int midx0 = u_zHistoryHead - sm0;
             if (midx0 < 0) midx0 += 256;
             int midx1 = u_zHistoryHead - sm0 - 1;

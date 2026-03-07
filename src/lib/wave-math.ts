@@ -223,20 +223,23 @@ export function computeWaveZ(
       const trackWaveSpeed = (uniforms.angularFreqs[srcIdx] ?? 1) / Math.max(uniforms.waveNumbers[srcIdx] ?? 1, 0.001);
 
       // Hilfsfunktion: Z-History mit linearer Interpolation abtasten
-      // Bei Ueberschreitung des Puffers: aeltesten Wert verwenden (kein Abriss)
-      const sampleHistory = (dist: number): number => {
+      // clampToOldest: true = einfallende Welle (Tuch-Effekt), false = reflektierte Welle (0 wenn Puffer ueberschritten)
+      const sampleHistory = (dist: number, clampToOldest: boolean): number => {
         const travelTime = dist / Math.max(trackWaveSpeed, 0.1);
         const samplesBackF = travelTime / Math.max(mouseWaveHistory.dt, 0.0001);
-        // Auf Pufferbereich begrenzen -- entfernte Punkte erhalten den aeltesten Wert
-        const clampedF = Math.min(Math.max(samplesBackF, 0), 255);
-        const s0 = Math.floor(clampedF);
-        const frac = clampedF - s0;
-        if (s0 >= 255) {
-          // Aeltester Wert im Puffer
-          let idx = mouseWaveHistory.head - 255;
-          if (idx < 0) idx += 256;
-          return mouseWaveHistory.buffer[idx] ?? 0;
+        if (samplesBackF < 0) return 0;
+        if (samplesBackF >= 255) {
+          if (clampToOldest) {
+            // Einfallende Welle: aeltesten Wert verwenden (kein Abriss)
+            let idx = mouseWaveHistory.head - 255;
+            if (idx < 0) idx += 256;
+            return mouseWaveHistory.buffer[idx] ?? 0;
+          }
+          // Reflektierte Welle: noch nicht angekommen
+          return 0;
         }
+        const s0 = Math.floor(samplesBackF);
+        const frac = samplesBackF - s0;
         let idx0 = mouseWaveHistory.head - s0;
         if (idx0 < 0) idx0 += 256;
         let idx1 = mouseWaveHistory.head - (s0 + 1);
@@ -246,7 +249,7 @@ export function computeWaveZ(
         return z0 + frac * (z1 - z0);
       };
 
-      // Einfallende History-Welle
+      // Einfallende History-Welle (clampToOldest = true fuer Tuch-Effekt)
       if (!reflection?.isActive || reflection.displayMode !== "reflected") {
         const doEmit = !reflection?.isActive || (() => {
           const sourceIsLeft = pos.x < reflection!.wallX;
@@ -255,12 +258,11 @@ export function computeWaveZ(
         })();
         if (doEmit) {
           const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
-          const historicZ = sampleHistory(r);
-          z += historicZ;
+          z += sampleHistory(r, true);
         }
       }
 
-      // Reflektierte History-Welle (Spiegelquellen-Methode)
+      // Reflektierte History-Welle (clampToOldest = false: 0 wenn Puffer ueberschritten)
       if (reflection?.isActive && reflection.displayMode !== "incident") {
         const mirrorX = 2 * reflection.wallX - pos.x;
         const mirrorY = pos.y;
@@ -268,9 +270,8 @@ export function computeWaveZ(
         const pointIsLeft = x < reflection.wallX;
         if (mirrorIsLeft !== pointIsLeft) {
           const rMirror = distanceToSource(x, y, mirrorX, mirrorY, sources.sourceType);
-          const historicZ = sampleHistory(rMirror);
           const sign = reflection.endType === "fixed" ? -1 : 1;
-          z += sign * historicZ;
+          z += sign * sampleHistory(rMirror, false);
         }
       }
     }
