@@ -414,6 +414,7 @@ export function WaveVisualization() {
                   positionMax={FIELD_HALF_SIZE}
                   chartData={chartData}
                   sourceUniforms={waveSourcesHook.sourceUniforms}
+                  reflectionWallX={reflectionHook.config.isActive ? reflectionHook.config.wallX : undefined}
                 />
               </div>
             )}

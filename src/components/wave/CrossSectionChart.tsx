@@ -20,6 +20,7 @@ import type { CrossSectionPoint } from "@/lib/wave-math";
 /** Schnittlinien-Farbe (Cyan) -- identisch zur 3D-Schnittlinie */
 const CROSS_SECTION_COLOR = "hsl(180, 100%, 50%)";
 const SOURCE_MARKER_COLOR = "hsl(30, 100%, 50%)";
+const WALL_COLOR = "hsl(0, 0%, 60%)";
 
 interface CrossSectionChartProps {
   /** Datenpunkte fuer die Kurve */
@@ -30,6 +31,8 @@ interface CrossSectionChartProps {
   sourcePositionsAlongAxis: number[];
   /** Feste Y-Achsen-Grenzen [min, max] -- wenn undefined, automatisch */
   fixedYDomain?: [number, number];
+  /** X-Position der Reflexionswand (nur bei Y-Schnitt relevant) */
+  reflectionWallX?: number;
 }
 
 const chartConfig: ChartConfig = {
@@ -48,6 +51,7 @@ export function CrossSectionChart({
   orientation,
   sourcePositionsAlongAxis,
   fixedYDomain,
+  reflectionWallX,
 }: CrossSectionChartProps) {
   // Y-Achsen-Domain: fixiert oder automatisch berechnet
   const yDomain = useMemo(() => {
@@ -114,6 +118,21 @@ export function CrossSectionChart({
 
         {/* Nulllinie */}
         <ReferenceLine y={0} stroke="hsl(var(--border))" strokeWidth={1} />
+
+        {/* Reflexionswand */}
+        {reflectionWallX !== undefined && (
+          <ReferenceLine
+            x={reflectionWallX}
+            stroke={WALL_COLOR}
+            strokeWidth={2}
+            label={{
+              value: "Wand",
+              position: "top",
+              fill: WALL_COLOR,
+              fontSize: 10,
+            }}
+          />
+        )}
 
         {/* Quellpositionen als gestrichelte Linien */}
         {sourcePositionsAlongAxis.map((pos, i) => (

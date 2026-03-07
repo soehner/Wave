@@ -173,14 +173,11 @@ export const waveVertexShader = /* glsl */ `
     // Mit linearer Interpolation zwischen benachbarten Samples fuer glatte Kurven.
     if (u_mouseTrackingSource >= 0) {
       // Quellenparameter via Loop ermitteln (GLSL ES 1.0 kompatibel)
-      float FADE_SAMPLES = 20.0;
       vec2 trackPos = vec2(0.0);
-      float trackDamping = 0.0;
       float trackWaveSpeed = 1.0;
       for (int i = 0; i < 16; i++) {
         if (i == u_mouseTrackingSource) {
           trackPos = u_sourcePositions[i];
-          trackDamping = u_dampings[i];
           trackWaveSpeed = u_angularFreqs[i] / max(u_waveNumbers[i], 0.001);
           break;
         }
@@ -201,10 +198,21 @@ export const waveVertexShader = /* glsl */ `
       if (emitIncident) {
         float r = distanceToSource(position.xy, trackPos);
         float samplesBackF = r / max(trackWaveSpeed, 0.1) / max(u_zHistoryDt, 0.0001);
-        int s0 = int(floor(samplesBackF));
-        float frac = samplesBackF - float(s0);
+        // Auf Pufferbereich begrenzen -- entfernte Punkte erhalten den aeltesten Wert
+        float clampedF = clamp(samplesBackF, 0.0, 255.0);
+        int s0 = int(floor(clampedF));
 
-        if (s0 >= 0 && s0 < 255) {
+        if (s0 >= 255) {
+          // Aeltester Wert im Puffer
+          int oldIdx = u_zHistoryHead - 255;
+          if (oldIdx < 0) oldIdx += 256;
+          float oldVal = 0.0;
+          for (int j = 0; j < 256; j++) {
+            if (j == oldIdx) oldVal = u_zHistory[j];
+          }
+          z += oldVal;
+        } else {
+          float frac = clampedF - float(s0);
           int idx0 = u_zHistoryHead - s0;
           if (idx0 < 0) idx0 += 256;
           int idx1 = u_zHistoryHead - s0 - 1;
@@ -216,12 +224,7 @@ export const waveVertexShader = /* glsl */ `
             if (j == idx0) z0 = u_zHistory[j];
             if (j == idx1) z1 = u_zHistory[j];
           }
-          float historicZ = z0 + frac * (z1 - z0);
-          // Sanftes Ausblenden am Pufferrand
-          if (s0 > 255 - int(FADE_SAMPLES)) {
-            historicZ *= float(255 - s0) / FADE_SAMPLES;
-          }
-          z += historicZ;
+          z += z0 + frac * (z1 - z0);
         }
       }
 
@@ -234,10 +237,20 @@ export const waveVertexShader = /* glsl */ `
         if (mirrorIsLeft != vtxIsLeft2) {
           float rMirror = distanceToSource(position.xy, mirrorPos);
           float samplesBackMF = rMirror / max(trackWaveSpeed, 0.1) / max(u_zHistoryDt, 0.0001);
-          int sm0 = int(floor(samplesBackMF));
-          float fracM = samplesBackMF - float(sm0);
+          float clampedMF = clamp(samplesBackMF, 0.0, 255.0);
+          int sm0 = int(floor(clampedMF));
+          float reflSign = (u_reflectionType == 1) ? -1.0 : 1.0;
 
-          if (sm0 >= 0 && sm0 < 255) {
+          if (sm0 >= 255) {
+            int mOldIdx = u_zHistoryHead - 255;
+            if (mOldIdx < 0) mOldIdx += 256;
+            float mOldVal = 0.0;
+            for (int j = 0; j < 256; j++) {
+              if (j == mOldIdx) mOldVal = u_zHistory[j];
+            }
+            z += reflSign * mOldVal;
+          } else {
+            float fracM = clampedMF - float(sm0);
             int midx0 = u_zHistoryHead - sm0;
             if (midx0 < 0) midx0 += 256;
             int midx1 = u_zHistoryHead - sm0 - 1;
@@ -249,14 +262,7 @@ export const waveVertexShader = /* glsl */ `
               if (j == midx0) mz0 = u_zHistory[j];
               if (j == midx1) mz1 = u_zHistory[j];
             }
-            float historicZM = mz0 + fracM * (mz1 - mz0);
-            // Sanftes Ausblenden am Pufferrand
-            if (sm0 > 255 - int(FADE_SAMPLES)) {
-              historicZM *= float(255 - sm0) / FADE_SAMPLES;
-            }
-            // Festes Ende: Phasenumkehr (-1), Loses Ende: gleiche Phase (+1)
-            float reflSign = (u_reflectionType == 1) ? -1.0 : 1.0;
-            z += reflSign * historicZM;
+            z += reflSign * (mz0 + fracM * (mz1 - mz0));
           }
         }
       }

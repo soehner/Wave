@@ -20,6 +20,7 @@ interface CrossSectionPanelProps {
   positionMax: number;
   chartData: CrossSectionPoint[];
   sourceUniforms: SourceUniforms | undefined;
+  reflectionWallX?: number;
 }
 
 /**
@@ -36,6 +37,7 @@ export function CrossSectionPanel({
   positionMax,
   chartData,
   sourceUniforms,
+  reflectionWallX,
 }: CrossSectionPanelProps) {
   // Z-Achsen-Skalierung: Auto oder Fixiert
   const [isFixedZ, setIsFixedZ] = useState(false);
@@ -168,6 +170,7 @@ export function CrossSectionPanel({
           orientation={orientation}
           sourcePositionsAlongAxis={sourcePositionsAlongAxis}
           fixedYDomain={fixedYDomain}
+          reflectionWallX={orientation === "y" ? reflectionWallX : undefined}
         />
       </div>
     </div>

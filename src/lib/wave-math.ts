@@ -223,20 +223,19 @@ export function computeWaveZ(
       const trackWaveSpeed = (uniforms.angularFreqs[srcIdx] ?? 1) / Math.max(uniforms.waveNumbers[srcIdx] ?? 1, 0.001);
 
       // Hilfsfunktion: Z-History mit linearer Interpolation abtasten
-      // Sanfter Uebergang am Pufferrand (letzte 20 Samples ausblenden)
-      const FADE_SAMPLES = 20;
+      // Bei Ueberschreitung des Puffers: aeltesten Wert verwenden (kein Abriss)
       const sampleHistory = (dist: number): number => {
         const travelTime = dist / Math.max(trackWaveSpeed, 0.1);
         const samplesBackF = travelTime / Math.max(mouseWaveHistory.dt, 0.0001);
-        const s0 = Math.floor(samplesBackF);
-        const frac = samplesBackF - s0;
-        if (s0 < 0 || s0 >= 255) {
-          if (s0 >= 0 && s0 < 256) {
-            let idx = mouseWaveHistory.head - s0;
-            if (idx < 0) idx += 256;
-            return mouseWaveHistory.buffer[idx] ?? 0;
-          }
-          return 0;
+        // Auf Pufferbereich begrenzen -- entfernte Punkte erhalten den aeltesten Wert
+        const clampedF = Math.min(Math.max(samplesBackF, 0), 255);
+        const s0 = Math.floor(clampedF);
+        const frac = clampedF - s0;
+        if (s0 >= 255) {
+          // Aeltester Wert im Puffer
+          let idx = mouseWaveHistory.head - 255;
+          if (idx < 0) idx += 256;
+          return mouseWaveHistory.buffer[idx] ?? 0;
         }
         let idx0 = mouseWaveHistory.head - s0;
         if (idx0 < 0) idx0 += 256;
@@ -244,12 +243,7 @@ export function computeWaveZ(
         if (idx1 < 0) idx1 += 256;
         const z0 = mouseWaveHistory.buffer[idx0] ?? 0;
         const z1 = mouseWaveHistory.buffer[idx1] ?? 0;
-        let val = z0 + frac * (z1 - z0);
-        // Sanftes Ausblenden am Pufferrand
-        if (s0 > 255 - FADE_SAMPLES) {
-          val *= (255 - s0) / FADE_SAMPLES;
-        }
-        return val;
+        return z0 + frac * (z1 - z0);
       };
 
       // Einfallende History-Welle
