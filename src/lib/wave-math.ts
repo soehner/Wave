@@ -220,7 +220,6 @@ export function computeWaveZ(
     const srcIdx = mouseWaveHistory.sourceIndex;
     const pos = sources.sourcePositions[srcIdx];
     if (pos) {
-      const trackDamping = uniforms.dampings[srcIdx] ?? 0;
       const trackWaveSpeed = (uniforms.angularFreqs[srcIdx] ?? 1) / Math.max(uniforms.waveNumbers[srcIdx] ?? 1, 0.001);
 
       // Hilfsfunktion: Z-History mit linearer Interpolation abtasten
@@ -263,7 +262,7 @@ export function computeWaveZ(
         if (doEmit) {
           const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
           const historicZ = sampleHistory(r);
-          z += historicZ * Math.exp(-trackDamping * r);
+          z += historicZ;
         }
       }
 
@@ -277,7 +276,7 @@ export function computeWaveZ(
           const rMirror = distanceToSource(x, y, mirrorX, mirrorY, sources.sourceType);
           const historicZ = sampleHistory(rMirror);
           const sign = reflection.endType === "fixed" ? -1 : 1;
-          z += sign * historicZ * Math.exp(-trackDamping * rMirror);
+          z += sign * historicZ;
         }
       }
     }

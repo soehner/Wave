@@ -221,7 +221,7 @@ export const waveVertexShader = /* glsl */ `
           if (s0 > 255 - int(FADE_SAMPLES)) {
             historicZ *= float(255 - s0) / FADE_SAMPLES;
           }
-          z += historicZ * exp(-trackDamping * r);
+          z += historicZ;
         }
       }
 
@@ -256,7 +256,7 @@ export const waveVertexShader = /* glsl */ `
             }
             // Festes Ende: Phasenumkehr (-1), Loses Ende: gleiche Phase (+1)
             float reflSign = (u_reflectionType == 1) ? -1.0 : 1.0;
-            z += reflSign * historicZM * exp(-trackDamping * rMirror);
+            z += reflSign * historicZM;
           }
         }
       }
