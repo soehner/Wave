@@ -114,8 +114,12 @@ export const waveVertexShader = /* glsl */ `
     for (int i = 0; i < 16; i++) {
       if (i >= effectiveCount) break;
 
-      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle ueberspringen
-      if (u_mouseTrackingSource >= 0 && i == u_mouseTrackingSource) continue;
+      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle und ihre Spiegelkopie ueberspringen
+      if (u_mouseTrackingSource >= 0) {
+        if (i == u_mouseTrackingSource) continue;
+        // Spiegelkopie: originalCount + mouseTrackingSource
+        if (u_reflectionType > 0 && i == originalCount + u_mouseTrackingSource) continue;
+      }
 
       // Bestimme ob diese Quelle einfallend oder reflektiert ist
       bool isReflected = (u_reflectionType > 0) && (i >= originalCount);
@@ -152,7 +156,10 @@ export const waveVertexShader = /* glsl */ `
     float bumpFactor = 1.0 / (2.0 * bumpWidth * bumpWidth);
     for (int i = 0; i < 16; i++) {
       if (i >= effectiveCount) break;
-      if (u_mouseTrackingSource >= 0 && i == u_mouseTrackingSource) continue;
+      if (u_mouseTrackingSource >= 0) {
+        if (i == u_mouseTrackingSource) continue;
+        if (u_reflectionType > 0 && i == originalCount + u_mouseTrackingSource) continue;
+      }
       float sz = u_sourceZ[i];
       if (abs(sz) > 0.01) {
         float rd = distanceToSource(position.xy, u_sourcePositions[i]);
@@ -163,6 +170,7 @@ export const waveVertexShader = /* glsl */ `
     // PROJ-16: Mausgesteuerte Wellenausbreitung aus Z-History-Ringpuffer
     // Jeder Oberflaechenpunkt empfaengt den Z-Wert, der zum Zeitpunkt
     // (jetzt - Laufzeit) an der Quelle herrschte: z(r) = zHistory(t - r/v) * e^(-d*r)
+    // Mit linearer Interpolation zwischen benachbarten Samples fuer glatte Kurven.
     if (u_mouseTrackingSource >= 0) {
       // Quellenparameter via Loop ermitteln (GLSL ES 1.0 kompatibel)
       vec2 trackPos = vec2(0.0);
@@ -177,26 +185,71 @@ export const waveVertexShader = /* glsl */ `
         }
       }
 
-      float r = distanceToSource(position.xy, trackPos);
-      float travelTime = r / max(trackWaveSpeed, 0.1);
-      int samplesBack = int(travelTime / max(u_zHistoryDt, 0.0001));
+      // Einfallende History-Welle
+      bool emitIncident = true;
+      if (u_reflectionType > 0) {
+        if (u_reflectionDisplayMode == 2) {
+          emitIncident = false;
+        } else {
+          bool srcIsLeft = trackPos.x < u_reflectionWallX;
+          bool vtxIsLeft = position.x < u_reflectionWallX;
+          if (srcIsLeft != vtxIsLeft) emitIncident = false;
+        }
+      }
 
-      if (samplesBack >= 0 && samplesBack < 256) {
-        // Ring-Index berechnen
-        int lookupIdx = u_zHistoryHead - samplesBack;
-        if (lookupIdx < 0) lookupIdx += 256;
+      if (emitIncident) {
+        float r = distanceToSource(position.xy, trackPos);
+        float samplesBackF = r / max(trackWaveSpeed, 0.1) / max(u_zHistoryDt, 0.0001);
+        int s0 = int(floor(samplesBackF));
+        float frac = samplesBackF - float(s0);
 
-        // Loop-basierte Suche (GLSL ES 1.0: Array-Index muss Loop-Variable sein)
-        float historicZ = 0.0;
-        for (int j = 0; j < 256; j++) {
-          if (j == lookupIdx) {
-            historicZ = u_zHistory[j];
-            break;
+        if (s0 >= 0 && s0 < 255) {
+          int idx0 = u_zHistoryHead - s0;
+          if (idx0 < 0) idx0 += 256;
+          int idx1 = u_zHistoryHead - s0 - 1;
+          if (idx1 < 0) idx1 += 256;
+
+          float z0 = 0.0;
+          float z1 = 0.0;
+          for (int j = 0; j < 256; j++) {
+            if (j == idx0) z0 = u_zHistory[j];
+            if (j == idx1) z1 = u_zHistory[j];
+          }
+          float historicZ = z0 + frac * (z1 - z0);
+          z += historicZ * exp(-trackDamping * r);
+        }
+      }
+
+      // Reflektierte History-Welle (Spiegelquellen-Methode)
+      if (u_reflectionType > 0 && u_reflectionDisplayMode != 1) {
+        vec2 mirrorPos = vec2(2.0 * u_reflectionWallX - trackPos.x, trackPos.y);
+        bool mirrorIsLeft = mirrorPos.x < u_reflectionWallX;
+        bool vtxIsLeft2 = position.x < u_reflectionWallX;
+
+        if (mirrorIsLeft != vtxIsLeft2) {
+          float rMirror = distanceToSource(position.xy, mirrorPos);
+          float samplesBackMF = rMirror / max(trackWaveSpeed, 0.1) / max(u_zHistoryDt, 0.0001);
+          int sm0 = int(floor(samplesBackMF));
+          float fracM = samplesBackMF - float(sm0);
+
+          if (sm0 >= 0 && sm0 < 255) {
+            int midx0 = u_zHistoryHead - sm0;
+            if (midx0 < 0) midx0 += 256;
+            int midx1 = u_zHistoryHead - sm0 - 1;
+            if (midx1 < 0) midx1 += 256;
+
+            float mz0 = 0.0;
+            float mz1 = 0.0;
+            for (int j = 0; j < 256; j++) {
+              if (j == midx0) mz0 = u_zHistory[j];
+              if (j == midx1) mz1 = u_zHistory[j];
+            }
+            float historicZM = mz0 + fracM * (mz1 - mz0);
+            // Festes Ende: Phasenumkehr (-1), Loses Ende: gleiche Phase (+1)
+            float reflSign = (u_reflectionType == 1) ? -1.0 : 1.0;
+            z += reflSign * historicZM * exp(-trackDamping * rMirror);
           }
         }
-
-        float envelope = exp(-trackDamping * r);
-        z += historicZ * envelope;
       }
     }
 

@@ -159,6 +159,9 @@ export function computeWaveZ(
     const phaseShift = reflection.endType === "fixed" ? Math.PI : 0;
 
     for (let i = 0; i < sources.sourceCount; i++) {
+      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle ueberspringen (History behandelt Reflexion)
+      if (mouseWaveHistory && i === mouseWaveHistory.sourceIndex) continue;
+
       const pos = sources.sourcePositions[i];
       if (!pos) continue;
 
@@ -212,22 +215,63 @@ export function computeWaveZ(
   }
 
   // PROJ-16: Mausgesteuerte Wellenausbreitung aus Z-History-Ringpuffer
+  // (einfallende + reflektierte Welle)
   if (mouseWaveHistory) {
     const srcIdx = mouseWaveHistory.sourceIndex;
     const pos = sources.sourcePositions[srcIdx];
     if (pos) {
       const trackDamping = uniforms.dampings[srcIdx] ?? 0;
       const trackWaveSpeed = (uniforms.angularFreqs[srcIdx] ?? 1) / Math.max(uniforms.waveNumbers[srcIdx] ?? 1, 0.001);
-      const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
-      const travelTime = r / Math.max(trackWaveSpeed, 0.1);
-      const samplesBack = Math.floor(travelTime / Math.max(mouseWaveHistory.dt, 0.0001));
 
-      if (samplesBack >= 0 && samplesBack < 256) {
-        let lookupIdx = mouseWaveHistory.head - samplesBack;
-        if (lookupIdx < 0) lookupIdx += 256;
-        const historicZ = mouseWaveHistory.buffer[lookupIdx] ?? 0;
-        const envelope = Math.exp(-trackDamping * r);
-        z += historicZ * envelope;
+      // Hilfsfunktion: Z-History mit linearer Interpolation abtasten
+      const sampleHistory = (dist: number): number => {
+        const travelTime = dist / Math.max(trackWaveSpeed, 0.1);
+        const samplesBackF = travelTime / Math.max(mouseWaveHistory.dt, 0.0001);
+        const s0 = Math.floor(samplesBackF);
+        const frac = samplesBackF - s0;
+        if (s0 < 0 || s0 >= 255) {
+          if (s0 >= 0 && s0 < 256) {
+            let idx = mouseWaveHistory.head - s0;
+            if (idx < 0) idx += 256;
+            return mouseWaveHistory.buffer[idx] ?? 0;
+          }
+          return 0;
+        }
+        let idx0 = mouseWaveHistory.head - s0;
+        if (idx0 < 0) idx0 += 256;
+        let idx1 = mouseWaveHistory.head - (s0 + 1);
+        if (idx1 < 0) idx1 += 256;
+        const z0 = mouseWaveHistory.buffer[idx0] ?? 0;
+        const z1 = mouseWaveHistory.buffer[idx1] ?? 0;
+        return z0 + frac * (z1 - z0);
+      };
+
+      // Einfallende History-Welle
+      if (!reflection?.isActive || reflection.displayMode !== "reflected") {
+        const doEmit = !reflection?.isActive || (() => {
+          const sourceIsLeft = pos.x < reflection!.wallX;
+          const pointIsLeft = x < reflection!.wallX;
+          return sourceIsLeft === pointIsLeft;
+        })();
+        if (doEmit) {
+          const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
+          const historicZ = sampleHistory(r);
+          z += historicZ * Math.exp(-trackDamping * r);
+        }
+      }
+
+      // Reflektierte History-Welle (Spiegelquellen-Methode)
+      if (reflection?.isActive && reflection.displayMode !== "incident") {
+        const mirrorX = 2 * reflection.wallX - pos.x;
+        const mirrorY = pos.y;
+        const mirrorIsLeft = mirrorX < reflection.wallX;
+        const pointIsLeft = x < reflection.wallX;
+        if (mirrorIsLeft !== pointIsLeft) {
+          const rMirror = distanceToSource(x, y, mirrorX, mirrorY, sources.sourceType);
+          const historicZ = sampleHistory(rMirror);
+          const sign = reflection.endType === "fixed" ? -1 : 1;
+          z += sign * historicZ * Math.exp(-trackDamping * rMirror);
+        }
       }
     }
   }
