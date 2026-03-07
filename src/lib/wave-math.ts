@@ -220,9 +220,7 @@ export function computeWaveZ(
     const srcIdx = mouseWaveHistory.sourceIndex;
     const pos = sources.sourcePositions[srcIdx];
     if (pos) {
-      // Mindest-Daempfung fuer Tuch-Effekt: Welle klingt zu den Raendern hin ab
-      const MIN_MOUSE_DAMPING = 0.15;
-      const trackDamping = Math.max(uniforms.dampings[srcIdx] ?? 0, MIN_MOUSE_DAMPING);
+      const trackDamping = uniforms.dampings[srcIdx] ?? 0;
       const trackWaveSpeed = (uniforms.angularFreqs[srcIdx] ?? 1) / Math.max(uniforms.waveNumbers[srcIdx] ?? 1, 0.001);
 
       // Hilfsfunktion: Z-History mit linearer Interpolation abtasten

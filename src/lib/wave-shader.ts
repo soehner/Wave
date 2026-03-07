@@ -173,8 +173,6 @@ export const waveVertexShader = /* glsl */ `
     // Mit linearer Interpolation zwischen benachbarten Samples fuer glatte Kurven.
     if (u_mouseTrackingSource >= 0) {
       // Quellenparameter via Loop ermitteln (GLSL ES 1.0 kompatibel)
-      // Mindest-Daempfung fuer Tuch-Effekt: Welle klingt zu den Raendern hin ab
-      float MIN_MOUSE_DAMPING = 0.15;
       float FADE_SAMPLES = 20.0;
       vec2 trackPos = vec2(0.0);
       float trackDamping = 0.0;
@@ -182,7 +180,7 @@ export const waveVertexShader = /* glsl */ `
       for (int i = 0; i < 16; i++) {
         if (i == u_mouseTrackingSource) {
           trackPos = u_sourcePositions[i];
-          trackDamping = max(u_dampings[i], MIN_MOUSE_DAMPING);
+          trackDamping = u_dampings[i];
           trackWaveSpeed = u_angularFreqs[i] / max(u_waveNumbers[i], 0.001);
           break;
         }
