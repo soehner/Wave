@@ -42,6 +42,8 @@ export interface UseProbeDataOptions {
   zHistoryBufferRef?: React.RefObject<Float32Array>;
   /** PROJ-16: Z-History Head-Index Ref */
   zHistoryHeadRef?: React.RefObject<number>;
+  /** PROJ-16: Zeitschritt zwischen Z-History Samples */
+  zHistoryDt?: number;
 }
 
 export interface UseProbeDataReturn {
@@ -63,6 +65,7 @@ export function useProbeData({
   mouseTrackingSourceIndex = -1,
   zHistoryBufferRef,
   zHistoryHeadRef,
+  zHistoryDt = 0.04,
 }: UseProbeDataOptions): UseProbeDataReturn {
   const [chartData, setChartData] = useState<ProbeDataPoint[]>([]);
 
@@ -117,7 +120,7 @@ export function useProbeData({
       for (const probe of currentProbes) {
         const mIdx = mouseTrackingSourceIndexRef.current;
         const mwh = mIdx >= 0 && zHistoryBufferRef && zHistoryHeadRef
-          ? { sourceIndex: mIdx, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+          ? { sourceIndex: mIdx, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: zHistoryDt }
           : undefined;
 
         point[probe.id] = computeWaveZ(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useWaveAnimation } from "@/hooks/useWaveAnimation";
+import { useWaveAnimation, Z_HISTORY_DT } from "@/hooks/useWaveAnimation";
 import { useWaveParams } from "@/hooks/useWaveParams";
 import { useWaveSources } from "@/hooks/useWaveSources";
 import { useCrossSection } from "@/hooks/useCrossSection";
@@ -256,6 +256,7 @@ export function WaveVisualization() {
     mouseTrackingSourceIndex: mouseTrackingSourceIdx,
     zHistoryBufferRef,
     zHistoryHeadRef,
+    zHistoryDt: Z_HISTORY_DT,
   });
 
   // Preset-Laden soll auch die Zeit zuruecksetzen (Spezifikation: "nur Parameter und Zeit werden zurueckgesetzt")
@@ -296,6 +297,7 @@ export function WaveVisualization() {
     mouseTrackingSourceIndex: mouseTrackingSourceIdx,
     zHistoryBufferRef,
     zHistoryHeadRef,
+    zHistoryDt: Z_HISTORY_DT,
   });
 
   // Intensitaetsschirm-Daten (PROJ-9)
@@ -311,6 +313,7 @@ export function WaveVisualization() {
     mouseTrackingSourceIndex: mouseTrackingSourceIdx,
     zHistoryBufferRef,
     zHistoryHeadRef,
+    zHistoryDt: Z_HISTORY_DT,
   });
 
   const toggleScreen = useCallback(() => {

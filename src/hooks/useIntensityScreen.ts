@@ -37,6 +37,8 @@ export interface UseIntensityScreenOptions {
   zHistoryBufferRef?: React.RefObject<Float32Array>;
   /** PROJ-16: Z-History Head-Index Ref */
   zHistoryHeadRef?: React.RefObject<number>;
+  /** PROJ-16: Zeitschritt zwischen Z-History Samples */
+  zHistoryDt?: number;
 }
 
 export interface UseIntensityScreenReturn {
@@ -66,6 +68,7 @@ export function useIntensityScreen({
   mouseTrackingSourceIndex = -1,
   zHistoryBufferRef,
   zHistoryHeadRef,
+  zHistoryDt = 0.04,
 }: UseIntensityScreenOptions): UseIntensityScreenReturn {
   const [rawChartData, setRawChartData] = useState<IntensityPoint[]>([]);
 
@@ -128,7 +131,7 @@ export function useIntensityScreen({
 
       const mIdx = mouseTrackingSourceIndexRef.current;
       const mwh = mIdx >= 0 && zHistoryBufferRef && zHistoryHeadRef
-        ? { sourceIndex: mIdx, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+        ? { sourceIndex: mIdx, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: zHistoryDt }
         : undefined;
 
       if (intensityModeRef.current === "instantaneous") {
@@ -177,7 +180,7 @@ export function useIntensityScreen({
       if (intensityModeRef.current === "instantaneous") {
         const mIdx2 = mouseTrackingSourceIndexRef.current;
         const mwh2 = mIdx2 >= 0 && zHistoryBufferRef && zHistoryHeadRef
-          ? { sourceIndex: mIdx2, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+          ? { sourceIndex: mIdx2, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: zHistoryDt }
           : undefined;
 
         const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS, reflection, mwh2);
@@ -190,7 +193,7 @@ export function useIntensityScreen({
         } else {
           const mIdx3 = mouseTrackingSourceIndexRef.current;
           const mwh3 = mIdx3 >= 0 && zHistoryBufferRef && zHistoryHeadRef
-            ? { sourceIndex: mIdx3, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+            ? { sourceIndex: mIdx3, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: zHistoryDt }
             : undefined;
           const data = calculateIntensityProfile(screenX, t, waveUniformArrays, sourceUniforms, NUM_POINTS, reflection, mwh3);
           setRawChartData(data);

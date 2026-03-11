@@ -32,6 +32,8 @@ export interface UseCrossSectionOptions {
   zHistoryBufferRef?: React.RefObject<Float32Array>;
   /** PROJ-16: Z-History Head-Index Ref */
   zHistoryHeadRef?: React.RefObject<number>;
+  /** PROJ-16: Zeitschritt zwischen Z-History Samples (muss mit useWaveAnimation uebereinstimmen) */
+  zHistoryDt?: number;
 }
 
 export interface UseCrossSectionReturn {
@@ -58,6 +60,7 @@ export function useCrossSection({
   mouseTrackingSourceIndex = -1,
   zHistoryBufferRef,
   zHistoryHeadRef,
+  zHistoryDt = 0.04,
 }: UseCrossSectionOptions): UseCrossSectionReturn {
   const [rawChartData, setRawChartData] = useState<CrossSectionPoint[]>([]);
 
@@ -124,7 +127,7 @@ export function useCrossSection({
 
       const mIdx = mouseTrackingSourceIndexRef.current;
       const mwh = mIdx >= 0 && zHistoryBufferRef && zHistoryHeadRef
-        ? { sourceIndex: mIdx, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+        ? { sourceIndex: mIdx, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: zHistoryDt }
         : undefined;
 
       const data = computeCrossSectionData(
@@ -158,7 +161,7 @@ export function useCrossSection({
       const t = timeRef.current ?? 0;
       const mIdx2 = mouseTrackingSourceIndexRef.current;
       const mwh2 = mIdx2 >= 0 && zHistoryBufferRef && zHistoryHeadRef
-        ? { sourceIndex: mIdx2, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: 0.02 }
+        ? { sourceIndex: mIdx2, buffer: zHistoryBufferRef.current, head: zHistoryHeadRef.current, dt: zHistoryDt }
         : undefined;
 
       const data = computeCrossSectionData(

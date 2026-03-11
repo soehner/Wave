@@ -33,7 +33,7 @@ const PLANE_SIZE = 10;
 
 // PROJ-16: Z-History Ringpuffer-Konstanten
 const Z_HISTORY_SIZE = 256;
-const Z_HISTORY_DT = 0.04; // Sekunden zwischen Samples (25 Hz) -- verdoppelt fuer groessere Reichweite
+export const Z_HISTORY_DT = 0.04; // Sekunden zwischen Samples (25 Hz) -- verdoppelt fuer groessere Reichweite
 
 const DEFAULT_CAMERA_POSITION = new THREE.Vector3(8, 8, 6);
 const DEFAULT_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
