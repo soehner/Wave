@@ -33,7 +33,7 @@ const PLANE_SIZE = 10;
 
 // PROJ-16: Z-History Ringpuffer-Konstanten
 const Z_HISTORY_SIZE = 256;
-const Z_HISTORY_DT = 0.02; // Sekunden zwischen Samples (50 Hz)
+const Z_HISTORY_DT = 0.04; // Sekunden zwischen Samples (25 Hz) -- verdoppelt fuer groessere Reichweite
 
 const DEFAULT_CAMERA_POSITION = new THREE.Vector3(8, 8, 6);
 const DEFAULT_CAMERA_TARGET = new THREE.Vector3(0, 0, 0);
@@ -1260,7 +1260,8 @@ export function useWaveAnimation({
         }
 
         if (isPlayingRef.current) {
-          const srcIdx = currentMouseSource;
+          // Bei Wert 8 (alle Quellen): Quelle 0 als Referenz fuer den Z-History-Puffer
+          const srcIdx = currentMouseSource === 8 ? 0 : currentMouseSource;
           const currentZ = (uniforms.u_sourceZ.value as number[])[srcIdx] ?? 0;
           const elapsed = timeRef.current - zHistoryLastTimeRef.current;
           const samplesToWrite = Math.min(Math.floor(elapsed / Z_HISTORY_DT), Z_HISTORY_SIZE);

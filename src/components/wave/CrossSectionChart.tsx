@@ -72,6 +72,15 @@ export function CrossSectionChart({
     return [min - padding, max + padding] as [number, number];
   }, [data, fixedYDomain]);
 
+  // Bei fixierter Z-Achse: feste Tick-Positionen berechnen (5 gleichmaessige Schritte)
+  // so dass sich weder Beschriftung noch Skalierung bei neuen Daten aendern
+  const yTicks = useMemo(() => {
+    if (!fixedYDomain) return undefined;
+    const [lo, hi] = fixedYDomain;
+    const step = (hi - lo) / 4;
+    return [lo, lo + step, lo + 2 * step, lo + 3 * step, hi];
+  }, [fixedYDomain]);
+
   const axisLabel = orientation === "x" ? "y [m]" : "x [m]";
 
   if (data.length === 0) {
@@ -104,6 +113,8 @@ export function CrossSectionChart({
         />
         <YAxis
           domain={yDomain}
+          allowDataOverflow={!!fixedYDomain}
+          ticks={yTicks}
           tick={{ fontSize: 11 }}
           tickFormatter={(v: number) => v.toFixed(2)}
           width={50}

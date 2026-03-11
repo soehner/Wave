@@ -117,8 +117,12 @@ export function computeWaveZ(
   // Einfallende Welle berechnen
   if (!reflection?.isActive || reflection.displayMode !== "reflected") {
     for (let i = 0; i < sources.sourceCount; i++) {
-      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle ueberspringen
-      if (mouseWaveHistory && i === mouseWaveHistory.sourceIndex) continue;
+      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle(n) ueberspringen
+      // Wert 8 = alle Quellen tracken
+      if (mouseWaveHistory) {
+        const tracked = mouseWaveHistory.sourceIndex;
+        if (tracked === 8 || i === tracked) continue;
+      }
 
       const pos = sources.sourcePositions[i];
       if (!pos) continue;
@@ -159,8 +163,11 @@ export function computeWaveZ(
     const phaseShift = reflection.endType === "fixed" ? Math.PI : 0;
 
     for (let i = 0; i < sources.sourceCount; i++) {
-      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle ueberspringen (History behandelt Reflexion)
-      if (mouseWaveHistory && i === mouseWaveHistory.sourceIndex) continue;
+      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle(n) ueberspringen (History behandelt Reflexion)
+      if (mouseWaveHistory) {
+        const tracked = mouseWaveHistory.sourceIndex;
+        if (tracked === 8 || i === tracked) continue;
+      }
 
       const pos = sources.sourcePositions[i];
       if (!pos) continue;
@@ -203,8 +210,11 @@ export function computeWaveZ(
   const bumpWidth = 0.8;
   const bumpFactor = 1 / (2 * bumpWidth * bumpWidth);
   for (let i = 0; i < sources.sourceCount; i++) {
-    // Gauss-Bump fuer mausgesteuerte Quelle ueberspringen (History ersetzt ihn)
-    if (mouseWaveHistory && i === mouseWaveHistory.sourceIndex) continue;
+    // Gauss-Bump fuer mausgesteuerte Quelle(n) ueberspringen (History ersetzt ihn)
+    if (mouseWaveHistory) {
+      const tracked = mouseWaveHistory.sourceIndex;
+      if (tracked === 8 || i === tracked) continue;
+    }
     const sz = sources.sourceZ?.[i] ?? 0;
     if (Math.abs(sz) > 0.01) {
       const pos = sources.sourcePositions[i];
@@ -216,38 +226,47 @@ export function computeWaveZ(
 
   // PROJ-16: Mausgesteuerte Wellenausbreitung aus Z-History-Ringpuffer
   // (einfallende + reflektierte Welle)
+  // Bei sourceIndex === 8: alle Originalquellen nutzen denselben Puffer
   if (mouseWaveHistory) {
-    const srcIdx = mouseWaveHistory.sourceIndex;
-    const pos = sources.sourcePositions[srcIdx];
-    if (pos) {
+    const tracked = mouseWaveHistory.sourceIndex;
+    // Bestimme, welche Quellen Z-History nutzen
+    const trackedIndices: number[] = [];
+    if (tracked === 8) {
+      for (let i = 0; i < sources.sourceCount; i++) trackedIndices.push(i);
+    } else {
+      trackedIndices.push(tracked);
+    }
+
+    // Hilfsfunktion: Z-History mit linearer Interpolation abtasten
+    const sampleHistory = (dist: number, waveSpeed: number, clampToOldest: boolean): number => {
+      const travelTime = dist / Math.max(waveSpeed, 0.1);
+      const samplesBackF = travelTime / Math.max(mouseWaveHistory.dt, 0.0001);
+      if (samplesBackF < 0) return 0;
+      if (samplesBackF >= 255) {
+        if (clampToOldest) {
+          let idx = mouseWaveHistory.head - 255;
+          if (idx < 0) idx += 256;
+          return mouseWaveHistory.buffer[idx] ?? 0;
+        }
+        return 0;
+      }
+      const s0 = Math.floor(samplesBackF);
+      const frac = samplesBackF - s0;
+      let idx0 = mouseWaveHistory.head - s0;
+      if (idx0 < 0) idx0 += 256;
+      let idx1 = mouseWaveHistory.head - (s0 + 1);
+      if (idx1 < 0) idx1 += 256;
+      const z0 = mouseWaveHistory.buffer[idx0] ?? 0;
+      const z1 = mouseWaveHistory.buffer[idx1] ?? 0;
+      return z0 + frac * (z1 - z0);
+    };
+
+    for (const srcIdx of trackedIndices) {
+      const pos = sources.sourcePositions[srcIdx];
+      if (!pos) continue;
       const trackWaveSpeed = (uniforms.angularFreqs[srcIdx] ?? 1) / Math.max(uniforms.waveNumbers[srcIdx] ?? 1, 0.001);
 
-      // Hilfsfunktion: Z-History mit linearer Interpolation abtasten
-      // clampToOldest: true = einfallende Welle (Tuch-Effekt), false = reflektierte Welle (0 wenn Puffer ueberschritten)
-      const sampleHistory = (dist: number, clampToOldest: boolean): number => {
-        const travelTime = dist / Math.max(trackWaveSpeed, 0.1);
-        const samplesBackF = travelTime / Math.max(mouseWaveHistory.dt, 0.0001);
-        if (samplesBackF < 0) return 0;
-        if (samplesBackF >= 255) {
-          if (clampToOldest) {
-            // Einfallende Welle: aeltesten Wert verwenden (kein Abriss)
-            let idx = mouseWaveHistory.head - 255;
-            if (idx < 0) idx += 256;
-            return mouseWaveHistory.buffer[idx] ?? 0;
-          }
-          // Reflektierte Welle: noch nicht angekommen
-          return 0;
-        }
-        const s0 = Math.floor(samplesBackF);
-        const frac = samplesBackF - s0;
-        let idx0 = mouseWaveHistory.head - s0;
-        if (idx0 < 0) idx0 += 256;
-        let idx1 = mouseWaveHistory.head - (s0 + 1);
-        if (idx1 < 0) idx1 += 256;
-        const z0 = mouseWaveHistory.buffer[idx0] ?? 0;
-        const z1 = mouseWaveHistory.buffer[idx1] ?? 0;
-        return z0 + frac * (z1 - z0);
-      };
+      const damping = uniforms.dampings[srcIdx] ?? 0;
 
       // Einfallende History-Welle (clampToOldest = true fuer Tuch-Effekt)
       if (!reflection?.isActive || reflection.displayMode !== "reflected") {
@@ -258,11 +277,12 @@ export function computeWaveZ(
         })();
         if (doEmit) {
           const r = distanceToSource(x, y, pos.x, pos.y, sources.sourceType);
-          z += sampleHistory(r, true);
+          const envelope = Math.exp(-damping * r);
+          z += envelope * sampleHistory(r, trackWaveSpeed, true);
         }
       }
 
-      // Reflektierte History-Welle (clampToOldest = false: 0 wenn Puffer ueberschritten)
+      // Reflektierte History-Welle
       if (reflection?.isActive && reflection.displayMode !== "incident") {
         const mirrorX = 2 * reflection.wallX - pos.x;
         const mirrorY = pos.y;
@@ -270,8 +290,9 @@ export function computeWaveZ(
         const pointIsLeft = x < reflection.wallX;
         if (mirrorIsLeft !== pointIsLeft) {
           const rMirror = distanceToSource(x, y, mirrorX, mirrorY, sources.sourceType);
+          const envelopeMirror = Math.exp(-damping * rMirror);
           const sign = reflection.endType === "fixed" ? -1 : 1;
-          z += sign * sampleHistory(rMirror, false);
+          z += sign * envelopeMirror * sampleHistory(rMirror, trackWaveSpeed, false);
         }
       }
     }

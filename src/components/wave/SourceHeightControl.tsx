@@ -15,16 +15,20 @@ interface SourceHeightControlProps {
   activeSourceIndex: number;
   /** Anzahl der Quellen */
   sourceCount: number;
-  /** Z-Hoehe der aktiven Quelle */
+  /** Z-Hoehe der aktiven (oder ersten) Quelle */
   activeZ: number;
   /** Mausverfolgung aktiv? */
   isMouseTrackingActive: boolean;
   /** Mausverfolgung umschalten */
   onToggleMouseTracking: () => void;
-  /** Z-Hoehe der aktiven Quelle zuruecksetzen */
+  /** Z-Hoehe zuruecksetzen */
   onResetZ: () => void;
-  /** Aktive Quelle wechseln */
+  /** Aktive Quelle wechseln (deaktiviert Alle-Modus) */
   onActiveSourceChange: (index: number) => void;
+  /** Alle Quellen gleichzeitig steuern */
+  controlAllSources?: boolean;
+  /** Alle-Quellen-Modus aktivieren */
+  onSelectAllSources?: () => void;
   /** Top-Down-Ansicht aktiv? (Z-Steuerung nicht sinnvoll) */
   is2DView?: boolean;
 }
@@ -37,6 +41,8 @@ export function SourceHeightControl({
   onToggleMouseTracking,
   onResetZ,
   onActiveSourceChange,
+  controlAllSources = false,
+  onSelectAllSources,
   is2DView,
 }: SourceHeightControlProps) {
   return (
@@ -72,16 +78,28 @@ export function SourceHeightControl({
             {Array.from({ length: sourceCount }, (_, i) => (
               <Button
                 key={i}
-                variant={activeSourceIndex === i ? "default" : "outline"}
+                variant={!controlAllSources && activeSourceIndex === i ? "default" : "outline"}
                 size="sm"
                 className="h-6 w-6 p-0 text-xs"
                 onClick={() => onActiveSourceChange(i)}
                 aria-label={`Quelle ${i + 1} auswaehlen`}
-                aria-pressed={activeSourceIndex === i}
+                aria-pressed={!controlAllSources && activeSourceIndex === i}
               >
                 {i + 1}
               </Button>
             ))}
+            {onSelectAllSources && (
+              <Button
+                variant={controlAllSources ? "default" : "outline"}
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={onSelectAllSources}
+                aria-label="Alle Quellen gleichzeitig steuern"
+                aria-pressed={controlAllSources}
+              >
+                Alle
+              </Button>
+            )}
           </div>
         </div>
       )}

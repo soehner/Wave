@@ -57,6 +57,10 @@ interface SourcePanelProps {
   isMouseTrackingActive?: boolean;
   /** Mausverfolgung umschalten (PROJ-16) */
   onToggleMouseTracking?: () => void;
+  /** Alle Quellen gleichzeitig steuern (PROJ-16) */
+  controlAllSources?: boolean;
+  /** Alle-Quellen-Modus aktivieren (PROJ-16) */
+  onSelectAllSources?: () => void;
   /** Top-Down-Ansicht aktiv? (PROJ-16) */
   is2DView?: boolean;
 }
@@ -69,6 +73,8 @@ export function SourcePanel({
   reflectionHook,
   isMouseTrackingActive = false,
   onToggleMouseTracking,
+  controlAllSources = false,
+  onSelectAllSources,
   is2DView = false,
 }: SourcePanelProps) {
   const {
@@ -82,6 +88,7 @@ export function SourcePanel({
     activeSourceIndex,
     setActiveSourceIndex,
     resetSourceZ,
+    resetAllSourceZ,
   } = sourceHook;
 
   return (
@@ -234,11 +241,13 @@ export function SourcePanel({
                 <SourceHeightControl
                   activeSourceIndex={activeSourceIndex}
                   sourceCount={config.count}
-                  activeZ={sourceZ[activeSourceIndex] ?? 0}
+                  activeZ={controlAllSources ? (sourceZ[0] ?? 0) : (sourceZ[activeSourceIndex] ?? 0)}
                   isMouseTrackingActive={isMouseTrackingActive}
                   onToggleMouseTracking={onToggleMouseTracking}
-                  onResetZ={() => resetSourceZ(activeSourceIndex)}
+                  onResetZ={() => controlAllSources ? resetAllSourceZ() : resetSourceZ(activeSourceIndex)}
                   onActiveSourceChange={setActiveSourceIndex}
+                  controlAllSources={controlAllSources}
+                  onSelectAllSources={onSelectAllSources}
                   is2DView={is2DView}
                 />
               </div>

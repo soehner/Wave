@@ -59,6 +59,9 @@ export function WaveVisualization() {
   const [probes, setProbes] = useState<Probe[]>([]);
   const probeCounterRef = useRef(0);
 
+  // Alle-Quellen-Modus (PROJ-16 Erweiterung)
+  const [controlAllSources, setControlAllSources] = useState(false);
+
   const waveSourcesHook = useWaveSources();
   const waveParamsHook = useWaveParams(waveSourcesHook.config.count);
   const presetsHook = usePresets(waveParamsHook.applyParams, waveSourcesHook.applyConfig);
@@ -78,7 +81,20 @@ export function WaveVisualization() {
     setSourceCount: (count) => { waveSourcesHook.setSourceCount(count); presetsHook.markDirty(); },
     setSourceSpacing: (spacing) => { waveSourcesHook.setSourceSpacing(spacing); presetsHook.markDirty(); },
     resetSources: () => { waveSourcesHook.resetSources(); presetsHook.markDirty(); },
+    // PROJ-16: Einzelquelle auswaehlen deaktiviert den Alle-Quellen-Modus
+    setActiveSourceIndex: (index) => { setControlAllSources(false); waveSourcesHook.setActiveSourceIndex(index); },
   };
+
+  // PROJ-16: Alle-Quellen-Modus deaktivieren wenn Quellenanzahl auf 1 faellt
+  useEffect(() => {
+    if (waveSourcesHook.config.count === 1) {
+      setControlAllSources(false);
+    }
+  }, [waveSourcesHook.config.count]);
+
+  const handleSelectAllSources = useCallback(() => {
+    setControlAllSources(true);
+  }, []);
 
   useEffect(() => {
     const check = () => {
@@ -141,11 +157,20 @@ export function WaveVisualization() {
   // PROJ-16: Maussteuerung fuer Quellenhoehe
   const handleCanvasMouseMove = useCallback((movementY: number) => {
     if (!mouseTrackingHook.isActive) return;
-    const idx = waveSourcesHook.activeSourceIndex;
-    const currentZ = waveSourcesHook.sourceZ[idx] ?? 0;
-    const newZ = mouseTrackingHook.handleMouseMove(movementY, currentZ);
-    waveSourcesHook.setSourceZ(idx, newZ);
-  }, [mouseTrackingHook, waveSourcesHook]);
+    if (controlAllSources) {
+      // Alle Quellen gemeinsam auf gleiche Hoehe bewegen (Quelle 0 als Referenz)
+      const currentZ = waveSourcesHook.sourceZ[0] ?? 0;
+      const newZ = mouseTrackingHook.handleMouseMove(movementY, currentZ);
+      for (let i = 0; i < waveSourcesHook.config.count; i++) {
+        waveSourcesHook.setSourceZ(i, newZ);
+      }
+    } else {
+      const idx = waveSourcesHook.activeSourceIndex;
+      const currentZ = waveSourcesHook.sourceZ[idx] ?? 0;
+      const newZ = mouseTrackingHook.handleMouseMove(movementY, currentZ);
+      waveSourcesHook.setSourceZ(idx, newZ);
+    }
+  }, [mouseTrackingHook, waveSourcesHook, controlAllSources]);
 
 
   // PROJ-16: Mausverfolgung deaktivieren wenn Top-Down-Ansicht aktiv (BUG-2)
@@ -181,8 +206,11 @@ export function WaveVisualization() {
     [reflectionHook.config.isActive, reflectionHook.config.wallX, reflectionHook.config.endType, reflectionHook.config.displayMode]
   );
 
-  // PROJ-16: MouseWaveHistory fuer CPU-seitige Berechnungen
-  const mouseTrackingSourceIdx = mouseTrackingHook.isActive ? waveSourcesHook.activeSourceIndex : -1;
+  // PROJ-16: Z-History aktiv -- Mausbewegung propagiert als Welle nach aussen.
+  // -1 = aus, 0..7 = Einzelquelle, 8 = alle Quellen gleichzeitig
+  const mouseTrackingSourceIdx = mouseTrackingHook.isActive
+    ? (controlAllSources ? 8 : waveSourcesHook.activeSourceIndex)
+    : -1;
 
   const crossSectionConfig = useMemo<CrossSectionPlane3DConfig>(
     () => ({
@@ -238,6 +266,7 @@ export function WaveVisualization() {
     setCurrentTime(0);
     // PROJ-16: Mausverfolgung deaktivieren und Z-Hoehen zuruecksetzen
     mouseTrackingHook.deactivate();
+    setControlAllSources(false);
     // Sonden bleiben, aber Puffer wird geleert (probeIds aendern sich nicht -> manuell triggern)
     setProbes((prev) => prev.map((p) => ({ ...p, id: `probe-${probeCounterRef.current++}` })));
     // Preset-Loading-Flag nach kurzer Verzoegerung zuruecksetzen
@@ -250,6 +279,7 @@ export function WaveVisualization() {
     resetTime();
     setCurrentTime(0);
     mouseTrackingHook.deactivate();
+    setControlAllSources(false);
     setProbes((prev) => prev.map((p) => ({ ...p, id: `probe-${probeCounterRef.current++}` })));
     setTimeout(() => learnMode.setPresetLoading(false), 100);
   }, [presetsHook, resetTime, learnMode, mouseTrackingHook]);
@@ -367,6 +397,8 @@ export function WaveVisualization() {
             reflectionHook={reflectionHook}
             isMouseTrackingActive={mouseTrackingHook.isActive}
             onToggleMouseTracking={handleToggleMouseTracking}
+            controlAllSources={controlAllSources}
+            onSelectAllSources={handleSelectAllSources}
             is2DView={is2DView}
           />
           {/* Mittlerer Bereich: 3D-Canvas + optionales Schnittdiagramm */}

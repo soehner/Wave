@@ -45,7 +45,7 @@ export const waveVertexShader = /* glsl */ `
   uniform float u_zHistory[256];       // Ringpuffer der letzten 256 Z-Werte
   uniform int u_zHistoryHead;          // Index des juengsten Samples
   uniform float u_zHistoryDt;          // Zeitintervall zwischen Samples (s)
-  uniform int u_mouseTrackingSource;   // -1 = aus, 0..7 = aktive Quelle
+  uniform int u_mouseTrackingSource;   // -1 = aus, 0..7 = Einzelquelle, 8 = alle Quellen
 
   varying float v_displacement;
 
@@ -114,10 +114,11 @@ export const waveVertexShader = /* glsl */ `
     for (int i = 0; i < 16; i++) {
       if (i >= effectiveCount) break;
 
-      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle und ihre Spiegelkopie ueberspringen
+      // PROJ-16: Sinuswelle fuer mausgesteuerte Quelle(n) ueberspringen
+      // Wert 8 = alle Quellen tracken (keine Sinuswellen)
       if (u_mouseTrackingSource >= 0) {
+        if (u_mouseTrackingSource == 8) continue;
         if (i == u_mouseTrackingSource) continue;
-        // Spiegelkopie: originalCount + mouseTrackingSource
         if (u_reflectionType > 0 && i == originalCount + u_mouseTrackingSource) continue;
       }
 
@@ -156,7 +157,9 @@ export const waveVertexShader = /* glsl */ `
     float bumpFactor = 1.0 / (2.0 * bumpWidth * bumpWidth);
     for (int i = 0; i < 16; i++) {
       if (i >= effectiveCount) break;
+      // PROJ-16: Gauss-Bump fuer mausgesteuerte Quelle(n) ueberspringen
       if (u_mouseTrackingSource >= 0) {
+        if (u_mouseTrackingSource == 8) continue;
         if (i == u_mouseTrackingSource) continue;
         if (u_reflectionType > 0 && i == originalCount + u_mouseTrackingSource) continue;
       }
@@ -169,102 +172,104 @@ export const waveVertexShader = /* glsl */ `
 
     // PROJ-16: Mausgesteuerte Wellenausbreitung aus Z-History-Ringpuffer
     // Jeder Oberflaechenpunkt empfaengt den Z-Wert, der zum Zeitpunkt
-    // (jetzt - Laufzeit) an der Quelle herrschte: z(r) = zHistory(t - r/v) * e^(-d*r)
-    // Mit linearer Interpolation zwischen benachbarten Samples fuer glatte Kurven.
+    // (jetzt - Laufzeit) an der Quelle herrschte: z(r) = zHistory(t - r/v)
+    // Wert 8 bei u_mouseTrackingSource = alle Originalquellen nutzen Z-History.
     if (u_mouseTrackingSource >= 0) {
-      // Quellenparameter via Loop ermitteln (GLSL ES 1.0 kompatibel)
-      vec2 trackPos = vec2(0.0);
-      float trackWaveSpeed = 1.0;
-      for (int i = 0; i < 16; i++) {
-        if (i == u_mouseTrackingSource) {
-          trackPos = u_sourcePositions[i];
-          trackWaveSpeed = u_angularFreqs[i] / max(u_waveNumbers[i], 0.001);
-          break;
-        }
-      }
-
-      // Einfallende History-Welle
-      bool emitIncident = true;
-      if (u_reflectionType > 0) {
-        if (u_reflectionDisplayMode == 2) {
-          emitIncident = false;
+      for (int histI = 0; histI < 8; histI++) {
+        // Bestimme ob diese Quelle Z-History nutzt
+        bool useHistory = false;
+        if (u_mouseTrackingSource < 8) {
+          if (histI == u_mouseTrackingSource) useHistory = true;
         } else {
-          bool srcIsLeft = trackPos.x < u_reflectionWallX;
-          bool vtxIsLeft = position.x < u_reflectionWallX;
-          if (srcIsLeft != vtxIsLeft) emitIncident = false;
+          // u_mouseTrackingSource == 8: alle Originalquellen
+          if (histI < originalCount) useHistory = true;
         }
-      }
+        if (!useHistory) continue;
 
-      if (emitIncident) {
-        float r = distanceToSource(position.xy, trackPos);
-        float samplesBackF = r / max(trackWaveSpeed, 0.1) / max(u_zHistoryDt, 0.0001);
-        // Auf Pufferbereich begrenzen -- entfernte Punkte erhalten den aeltesten Wert
-        float clampedF = clamp(samplesBackF, 0.0, 255.0);
-        int s0 = int(floor(clampedF));
+        vec2 trackPos = u_sourcePositions[histI];
+        float trackWaveSpeed = u_angularFreqs[histI] / max(u_waveNumbers[histI], 0.001);
 
-        if (s0 >= 255) {
-          // Aeltester Wert im Puffer
-          int oldIdx = u_zHistoryHead - 255;
-          if (oldIdx < 0) oldIdx += 256;
-          float oldVal = 0.0;
-          for (int j = 0; j < 256; j++) {
-            if (j == oldIdx) oldVal = u_zHistory[j];
+        // Einfallende History-Welle
+        bool emitIncident = true;
+        if (u_reflectionType > 0) {
+          if (u_reflectionDisplayMode == 2) {
+            emitIncident = false;
+          } else {
+            bool srcIsLeft = trackPos.x < u_reflectionWallX;
+            bool vtxIsLeft = position.x < u_reflectionWallX;
+            if (srcIsLeft != vtxIsLeft) emitIncident = false;
           }
-          z += oldVal;
-        } else {
-          float frac = clampedF - float(s0);
-          int idx0 = u_zHistoryHead - s0;
-          if (idx0 < 0) idx0 += 256;
-          int idx1 = u_zHistoryHead - s0 - 1;
-          if (idx1 < 0) idx1 += 256;
-
-          float z0 = 0.0;
-          float z1 = 0.0;
-          for (int j = 0; j < 256; j++) {
-            if (j == idx0) z0 = u_zHistory[j];
-            if (j == idx1) z1 = u_zHistory[j];
-          }
-          z += z0 + frac * (z1 - z0);
         }
-      }
 
-      // Reflektierte History-Welle (Spiegelquellen-Methode)
-      if (u_reflectionType > 0 && u_reflectionDisplayMode != 1) {
-        vec2 mirrorPos = vec2(2.0 * u_reflectionWallX - trackPos.x, trackPos.y);
-        bool mirrorIsLeft = mirrorPos.x < u_reflectionWallX;
-        bool vtxIsLeft2 = position.x < u_reflectionWallX;
+        if (emitIncident) {
+          float r = distanceToSource(position.xy, trackPos);
+          float envelope = exp(-u_dampings[histI] * r);
+          float samplesBackF = r / max(trackWaveSpeed, 0.1) / max(u_zHistoryDt, 0.0001);
+          float clampedF = clamp(samplesBackF, 0.0, 255.0);
+          int s0 = int(floor(clampedF));
 
-        if (mirrorIsLeft != vtxIsLeft2) {
-          float rMirror = distanceToSource(position.xy, mirrorPos);
-          float samplesBackMF = rMirror / max(trackWaveSpeed, 0.1) / max(u_zHistoryDt, 0.0001);
-          float reflSign = (u_reflectionType == 1) ? -1.0 : 1.0;
-
-          // Reflektierte Welle: 0 wenn Puffer ueberschritten (Welle noch nicht angekommen)
-          if (samplesBackMF >= 0.0 && samplesBackMF < 255.0) {
-            int sm0 = int(floor(samplesBackMF));
-            float fracM = samplesBackMF - float(sm0);
-            int midx0 = u_zHistoryHead - sm0;
-            if (midx0 < 0) midx0 += 256;
-            int midx1 = u_zHistoryHead - sm0 - 1;
-            if (midx1 < 0) midx1 += 256;
-
-            float mz0 = 0.0;
-            float mz1 = 0.0;
+          if (s0 >= 255) {
+            int oldIdx = u_zHistoryHead - 255;
+            if (oldIdx < 0) oldIdx += 256;
+            float oldVal = 0.0;
             for (int j = 0; j < 256; j++) {
-              if (j == midx0) mz0 = u_zHistory[j];
-              if (j == midx1) mz1 = u_zHistory[j];
+              if (j == oldIdx) oldVal = u_zHistory[j];
             }
-            z += reflSign * (mz0 + fracM * (mz1 - mz0));
+            z += envelope * oldVal;
+          } else {
+            float frac = clampedF - float(s0);
+            int idx0 = u_zHistoryHead - s0;
+            if (idx0 < 0) idx0 += 256;
+            int idx1 = u_zHistoryHead - s0 - 1;
+            if (idx1 < 0) idx1 += 256;
+
+            float z0h = 0.0;
+            float z1h = 0.0;
+            for (int j = 0; j < 256; j++) {
+              if (j == idx0) z0h = u_zHistory[j];
+              if (j == idx1) z1h = u_zHistory[j];
+            }
+            z += envelope * (z0h + frac * (z1h - z0h));
           }
         }
-      }
+
+        // Reflektierte History-Welle (Spiegelquellen-Methode)
+        if (u_reflectionType > 0 && u_reflectionDisplayMode != 1) {
+          vec2 mirrorPos = vec2(2.0 * u_reflectionWallX - trackPos.x, trackPos.y);
+          bool mirrorIsLeft = mirrorPos.x < u_reflectionWallX;
+          bool vtxIsLeft2 = position.x < u_reflectionWallX;
+
+          if (mirrorIsLeft != vtxIsLeft2) {
+            float rMirror = distanceToSource(position.xy, mirrorPos);
+            float envelopeM = exp(-u_dampings[histI] * rMirror);
+            float samplesBackMF = rMirror / max(trackWaveSpeed, 0.1) / max(u_zHistoryDt, 0.0001);
+            float reflSign = (u_reflectionType == 1) ? -1.0 : 1.0;
+
+            if (samplesBackMF >= 0.0 && samplesBackMF < 255.0) {
+              int sm0 = int(floor(samplesBackMF));
+              float fracM = samplesBackMF - float(sm0);
+              int midx0 = u_zHistoryHead - sm0;
+              if (midx0 < 0) midx0 += 256;
+              int midx1 = u_zHistoryHead - sm0 - 1;
+              if (midx1 < 0) midx1 += 256;
+
+              float mz0 = 0.0;
+              float mz1 = 0.0;
+              for (int j = 0; j < 256; j++) {
+                if (j == midx0) mz0 = u_zHistory[j];
+                if (j == midx1) mz1 = u_zHistory[j];
+              }
+              z += envelopeM * reflSign * (mz0 + fracM * (mz1 - mz0));
+            }
+          }
+        }
+      } // end histI loop
     }
 
     // Normierung
+    // Hinweis: kein spezieller Override fuer Mouse-Tracking -- Z-History-Werte saturieren
+    // bei Bedarf (clamp), aber andere Quellen bleiben voll sichtbar (PROJ-16 Bugfix)
     float normFactor = max(sumMaxAmp, 0.001);
-    if (u_mouseTrackingSource >= 0) {
-      normFactor = max(normFactor, 5.0);
-    }
     v_displacement = clamp(z / normFactor, -1.0, 1.0);
 
     vec3 newPosition = vec3(position.x, position.y, z);
